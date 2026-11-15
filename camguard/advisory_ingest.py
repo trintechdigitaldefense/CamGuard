@@ -111,7 +111,7 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
     if api_key:
         nvd_headers["apiKey"] = api_key
 
-    nvd_items: list[dict[str, Any]] = []
+    nvd_by_id: dict[str, dict[str, Any]] = {}
     start_index = 0
     while True:
         params = urllib.parse.urlencode({
@@ -139,8 +139,8 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
                 "cvss_vector": vector, "cpe_applicability": _configurations(cve),
                 "references": [r.get("url") for r in (cve.get("references") or []) if isinstance(r, dict) and r.get("url")][:50],
                 "source_url": f"https://nvd.nist.gov/vuln/detail/{cve_id}",
-            })
-        total = int(page.get("totalResults", len(nvd_items)))
+            }
+        total = int(page.get("totalResults", len(nvd_by_id)))
         start_index += len(vulnerabilities)
         if not vulnerabilities or start_index >= total:
             break
