@@ -8,7 +8,9 @@ CamGuard is an authorized, scope-limited network inventory and assessment tool f
 
 - Bounded TCP reachability inventory for common camera/NVR ports on explicitly authorized RFC1918 IPv4 scopes.
 - Operator-supplied camera/NVR manufacturer, model, firmware and CPE inventory (JSON or CSV).
-- Exact-match CVE correlation against a local advisory JSON file. Matching requires a verified inventory record, exact CPE equality and exact firmware-version equality.
+- Exact-match CVE correlation against analyst-approved advisory records, requiring verified inventory, exact CPE equality and exact firmware-version equality.
+- Evidence-backed read-only HTTPS metadata indicators for five camera manufacturers, with explicit confidence levels.
+- Daily NVD CVE API 2.0 and CISA KEV ingestion into a review-only pull request; analyst-gated approvals and provenance.
 - Transparent 0–100 triage scoring and asset-level highest-finding aggregation.
 - JSON, Markdown and TrinTech-branded PDF reports.
 - Automated unit tests and GitHub Actions workflow.
@@ -174,11 +176,9 @@ python -m camguard --help
 
 ## Roadmap
 
-1. Vendor-supported, non-invasive device metadata collection with explicit per-client approval.
-2. Curated advisory ingestion with source provenance, freshness and version-range review.
-3. Guided configuration hardening checklist.
-4. Finding lifecycle, remediation evidence and historical comparisons.
-5. Optional client-approved monitoring.
+1. Guided camera/NVR configuration hardening checklist.
+2. Finding lifecycle, remediation evidence and historical comparisons.
+3. Optional client-approved monitoring and alerting.
 
 ## TrinTech Digital Defense
 
