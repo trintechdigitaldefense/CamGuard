@@ -5,7 +5,6 @@ Downloads create a review inbox only. They never create deployable CVE matches.
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 import urllib.error
@@ -27,7 +26,7 @@ class AdvisoryIngestionError(RuntimeError):
 
 
 def _utc(value: datetime) -> str:
-    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _get_json(url: str, headers: dict[str, str], timeout: float = 30.0,
@@ -145,11 +144,11 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
 
     kev = _get_json(KEV_URL, headers, opener=opener)
     vulnerabilities = kev.get("vulnerabilities")
-    if not isinstance(vulnerabilities, list) or not isinstance(kev.get("count"), int):
+    if not isinstance(vulnerabilities, list) or not isinstance(kev.get("count"), int) or kev.get("count") != len(vulnerabilities):
         raise AdvisoryIngestionError("CISA KEV response failed required schema checks.")
     kev_by_id = {}
     for row in vulnerabilities:
-        if not isinstance(row, dict) or not CVE_RE.fullmatch(str(row.get("cveID", ""))):
+        if not isinstance(row, dict) or not CVE_RE.fullmatch(str(row.get("cveID", ""))) or not all(row.get(k) for k in ("vendorProject", "product", "vulnerabilityName", "dateAdded", "shortDescription", "requiredAction", "dueDate")):
             raise AdvisoryIngestionError("CISA KEV contains an invalid CVE identifier.")
         kev_by_id[row["cveID"].upper()] = {
             "vendor_project": row.get("vendorProject"),
