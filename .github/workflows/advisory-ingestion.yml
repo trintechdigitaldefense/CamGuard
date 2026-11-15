@@ -35,9 +35,13 @@ jobs:
       - name: Fetch NVD and CISA KEV into review inbox
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          LOOKBACK_DAYS: ${{ inputs.lookback_days || '7' }}
         run: |
-          DAYS="${{ inputs.lookback_days || '7' }}"
-          python -m camguard ingest-advisories --days "$DAYS" --output-dir data/advisories/inbox
+          if ! [[ "$LOOKBACK_DAYS" =~ ^[0-9]+$ ]] || (( LOOKBACK_DAYS < 1 || LOOKBACK_DAYS > 120 )); then
+            echo "lookback_days must be an integer from 1 to 120"
+            exit 1
+          fi
+          python -m camguard ingest-advisories --days "$LOOKBACK_DAYS" --output-dir data/advisories/inbox
       - name: Validate code and ingestion tests before publishing inbox
         run: |
           python -m unittest discover -s tests -v
