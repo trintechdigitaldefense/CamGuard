@@ -3,7 +3,6 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch
 
 from camguard.advisory_ingest import (
     AdvisoryIngestionError, _configurations, _cvss, export_approved, ingest_sources,
@@ -16,7 +15,7 @@ class FakeResponse:
         self.payload = json.dumps(payload).encode()
     def __enter__(self): return self
     def __exit__(self, *args): return False
-    def read(self): return self.payload
+    def read(self, size=-1): return self.payload if size < 0 else self.payload[:size]
 
 
 class AdvisoryIngestionTests(unittest.TestCase):
