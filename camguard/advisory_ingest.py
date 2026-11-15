@@ -106,9 +106,10 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
     end = now.astimezone(timezone.utc)
     start = end - timedelta(days=days)
     retrieved = _utc(end)
-    headers = {"User-Agent": "TrinTech-CamGuard-AdvisoryIngestion/0.4", "Accept": "application/json"}
+    nvd_headers = {"User-Agent": "TrinTech-CamGuard-AdvisoryIngestion/0.4", "Accept": "application/json"}
+    kev_headers = {"User-Agent": "TrinTech-CamGuard-AdvisoryIngestion/0.4", "Accept": "application/json"}
     if api_key:
-        headers["apiKey"] = api_key
+        nvd_headers["apiKey"] = api_key
 
     nvd_items: list[dict[str, Any]] = []
     start_index = 0
@@ -117,7 +118,7 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
             "lastModStartDate": _utc(start), "lastModEndDate": _utc(end),
             "resultsPerPage": PAGE_SIZE, "startIndex": start_index,
         })
-        page = _get_json(f"{NVD_URL}?{params}", headers, opener=opener)
+        page = _get_json(f"{NVD_URL}?{params}", nvd_headers, opener=opener)
         vulnerabilities = page.get("vulnerabilities")
         if not isinstance(vulnerabilities, list):
             raise AdvisoryIngestionError("NVD response is missing vulnerabilities array.")
@@ -146,7 +147,7 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
         # NVD documents tighter request rates without an API key; conservative pacing.
         time.sleep(0.7 if api_key else 6.1)
 
-    nvd_items = list(nvd_by_id.values())\n    kev = _get_json(KEV_URL, headers, opener=opener)
+    nvd_items = list(nvd_by_id.values())\n    kev = _get_json(KEV_URL, kev_headers, opener=opener)
     vulnerabilities = kev.get("vulnerabilities")
     if not isinstance(vulnerabilities, list) or not isinstance(kev.get("count"), int) or kev.get("count") != len(vulnerabilities):
         raise AdvisoryIngestionError("CISA KEV response failed required schema checks.")
@@ -212,6 +213,7 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
 
 
 def _atomic_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     temporary.replace(path)
