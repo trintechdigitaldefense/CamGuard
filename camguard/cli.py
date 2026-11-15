@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
             inventory = load_inventory(args.inventory)
             advisories = load_advisories(args.advisories) if args.advisories else []
             result = {
-                "tool": "TrinTech CamGuard", "version": "0.2.0",
+                "tool": "TrinTech CamGuard", "version": "0.4.0",
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "scope": {"cidr": "operator-supplied inventory", "addresses_considered": len(inventory), "authorization_attested": False},
                 "scan_type": "offline inventory enrichment and exact CVE advisory matching; no network probes",
