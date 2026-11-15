@@ -41,11 +41,11 @@ def validate_targets(targets: list[str], authorized: bool) -> list[str]:
 
 def _title(body: bytes) -> str | None:
     text = body.decode("utf-8", errors="replace")
-    match = re.search(r"<title[^>]*>(.*?)</title\\s*>", text, re.I | re.S)
+    match = re.search(r"<title[^>]*>(.*?)</title\s*>", text, re.I | re.S)
     if not match:
         return None
     value = html.unescape(re.sub(r"<[^>]+>", "", match.group(1)))
-    return re.sub(r"\\s+", " ", value).strip()[:160] or None
+    return re.sub(r"\s+", " ", value).strip()[:160] or None
 
 def identify(server: str, title: str | None) -> tuple[str | None, str, list[str]]:
     for vendor, signatures in _SIGNATURES:
@@ -91,9 +91,9 @@ def collect_metadata(targets: list[str], authorized: bool, timeout: float = 1.0)
         server = str(headers.get("Server", ""))[:200]
         title = None
         if body:
-            match = re.search(r"<title[^>]*>(.*?)</title\\s*>", body.decode("utf-8", "replace"), re.I | re.S)
+            match = re.search(r"<title[^>]*>(.*?)</title\s*>", body.decode("utf-8", "replace"), re.I | re.S)
             if match:
-                title = re.sub(r"\\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", match.group(1)))).strip()[:160]
+                title = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", match.group(1)))).strip()[:160]
         vendor, confidence, evidence = identify(server, title)
         item.update(http_status=status, server_header=server or None, page_title=title,
                     manufacturer=vendor, manufacturer_confidence=confidence,
