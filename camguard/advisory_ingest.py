@@ -10,6 +10,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from urllib.parse import urlsplit
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -38,7 +39,7 @@ def _get_json(url: str, headers: dict[str, str], timeout: float = 30.0,
             with opener(request, timeout=timeout) as response:
                 if getattr(response, "status", 200) != 200:
                     raise AdvisoryIngestionError(f"Unexpected HTTP status: {response.status}")
-                payload = json.loads(response.read().decode("utf-8"))
+                raw = response.read(50 * 1024 * 1024 + 1)\n                if len(raw) > 50 * 1024 * 1024:\n                    raise AdvisoryIngestionError("Source response exceeded the 50 MiB safety limit.")\n                payload = json.loads(raw.decode("utf-8"))
             if not isinstance(payload, dict):
                 raise AdvisoryIngestionError("Source returned a non-object JSON document.")
             return payload
@@ -125,7 +126,7 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
             score, cvss_version, vector = _cvss(cve)
             descriptions = cve.get("descriptions") or []
             description = next((d.get("value", "") for d in descriptions if d.get("lang") == "en"), "")
-            nvd_items.append({
+            nvd_by_id[cve_id] = {
                 "cve": cve_id, "published": cve.get("published"),
                 "last_modified": cve.get("lastModified"),
                 "vuln_status": cve.get("vulnStatus"),
@@ -142,7 +143,7 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
         # NVD documents tighter request rates without an API key; conservative pacing.
         time.sleep(0.7 if api_key else 6.1)
 
-    kev = _get_json(KEV_URL, headers, opener=opener)
+    nvd_items = list(nvd_by_id.values())\n    kev = _get_json(KEV_URL, headers, opener=opener)
     vulnerabilities = kev.get("vulnerabilities")
     if not isinstance(vulnerabilities, list) or not isinstance(kev.get("count"), int) or kev.get("count") != len(vulnerabilities):
         raise AdvisoryIngestionError("CISA KEV response failed required schema checks.")
@@ -150,7 +151,7 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
     for row in vulnerabilities:
         if not isinstance(row, dict) or not CVE_RE.fullmatch(str(row.get("cveID", ""))) or not all(row.get(k) for k in ("vendorProject", "product", "vulnerabilityName", "dateAdded", "shortDescription", "requiredAction", "dueDate")):
             raise AdvisoryIngestionError("CISA KEV contains an invalid CVE identifier.")
-        kev_by_id[row["cveID"].upper()] = {
+        kev_id = row["cveID"].upper()\n        if kev_id in kev_by_id:\n            raise AdvisoryIngestionError(f"CISA KEV contains duplicate CVE ID: {kev_id}")\n        kev_by_id[kev_id] = {
             "vendor_project": row.get("vendorProject"),
             "product": row.get("product"),
             "vulnerability_name": row.get("vulnerabilityName"),
@@ -177,7 +178,7 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
 
     # KEV entries are also retained even if absent from the recent NVD modification window.
     nvd_ids = {item["cve"] for item in candidates}
-    kev_only = [{"cve": cve, "cisa_kev": True, "kev_details": data,
+    kev_only = [{"cve": cve, "source_url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",\n                 "cisa_kev": True, "kev_details": data,
                  "nvd_record_in_window": False, "review_status": "pending",
                  "approval_note": "KEV presence alone does not establish affected product/version."}
                 for cve, data in kev_by_id.items() if cve not in nvd_ids]
@@ -240,10 +241,10 @@ def export_approved(approvals_path: str, output_path: str) -> int:
         if not reviewer or not reviewed_at:
             raise ValueError(f"{cve}: reviewed_by and reviewed_at are required.")
         try:
-            datetime.fromisoformat(reviewed_at.replace("Z", "+00:00"))
+            parsed_reviewed_at = datetime.fromisoformat(reviewed_at.replace("Z", "+00:00"))\n            if parsed_reviewed_at.tzinfo is None:\n                raise ValueError("timezone is required")
         except ValueError as exc:
             raise ValueError(f"{cve}: reviewed_at must be ISO-8601.") from exc
-        if not isinstance(score, (int, float)) or not 0 <= score <= 10:
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0 <= score <= 10:
             raise ValueError(f"{cve}: valid CVSS base score is required.")
         source = str(row.get("source", "")).strip()
         summary = str(row.get("summary", "")).strip()
