@@ -41,7 +41,8 @@ jobs:
       - name: Validate code and ingestion tests before publishing inbox
         run: |
           python -m unittest discover -s tests -v
-          python -m camguard --help\n      - name: Open or update analyst review pull request
+          python -m camguard --help
+      - name: Open or update analyst review pull request
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
