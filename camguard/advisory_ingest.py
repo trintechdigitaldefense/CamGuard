@@ -39,7 +39,10 @@ def _get_json(url: str, headers: dict[str, str], timeout: float = 30.0,
             with opener(request, timeout=timeout) as response:
                 if getattr(response, "status", 200) != 200:
                     raise AdvisoryIngestionError(f"Unexpected HTTP status: {response.status}")
-                raw = response.read(50 * 1024 * 1024 + 1)\n                if len(raw) > 50 * 1024 * 1024:\n                    raise AdvisoryIngestionError("Source response exceeded the 50 MiB safety limit.")\n                payload = json.loads(raw.decode("utf-8"))
+                raw = response.read(50 * 1024 * 1024 + 1)
+                if len(raw) > 50 * 1024 * 1024:
+                    raise AdvisoryIngestionError("Source response exceeded the 50 MiB safety limit.")
+                payload = json.loads(raw.decode("utf-8"))
             if not isinstance(payload, dict):
                 raise AdvisoryIngestionError("Source returned a non-object JSON document.")
             return payload
