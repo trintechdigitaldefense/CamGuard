@@ -1,0 +1,64 @@
+name: Advisory feed refresh
+
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: "NVD modified lookback window (1–120 days)"
+        required: false
+        default: "7"
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: advisory-feed-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CamGuard
+        run: python -m pip install -e .
+      - name: Fetch NVD and CISA KEV into review inbox
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          DAYS="${{ inputs.lookback_days || '7' }}"
+          python -m camguard ingest-advisories --days "$DAYS" --output-dir data/advisories/inbox
+      - name: Validate code and ingestion tests before publishing inbox
+        run: |
+          python -m unittest discover -s tests -v
+          python -m camguard --help
+      - name: Open or update analyst review pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: automation/advisory-feed-review
+          delete-branch: false
+          commit-message: "chore: refresh NVD and CISA KEV review inbox"
+          title: "Advisory feed refresh — analyst review required"
+          body: |
+            Automated source refresh from the official NVD CVE API 2.0 and CISA KEV JSON catalogue.
+
+            **This PR contains pending candidates only.** It does not publish approved advisories or assert that any client device is affected.
+
+            Analyst actions:
+            1. Check NVD references and the original vendor advisory.
+            2. Verify product identity and affected version semantics.
+            3. Add reviewed decisions to the controlled approvals file with reviewer, timestamp, exact CPE and explicit affected versions.
+            4. Run `camguard export-approved` and review its output before merging approval changes.
+
+            KEV membership indicates known exploitation in the wild, not applicability to a particular device.

@@ -1,0 +1,16 @@
+{
+  "approvals": [
+    {
+      "cve": "CVE-YYYY-NNNN",
+      "decision": "pending",
+      "cpe": "",
+      "affected_versions": [],
+      "cvss_base_score": 0.0,
+      "source": "",
+      "summary": "",
+      "kev": false,
+      "reviewed_by": "",
+      "reviewed_at": ""
+    }
+  ]
+}

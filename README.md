@@ -4,11 +4,13 @@
 
 CamGuard is an authorized, scope-limited network inventory and assessment tool from TrinTech Digital Defense.
 
-## Current capabilities (0.2.0)
+## Current capabilities (0.4.0)
 
 - Bounded TCP reachability inventory for common camera/NVR ports on explicitly authorized RFC1918 IPv4 scopes.
 - Operator-supplied camera/NVR manufacturer, model, firmware and CPE inventory (JSON or CSV).
-- Exact-match CVE correlation against a local advisory JSON file. Matching requires a verified inventory record, exact CPE equality and exact firmware-version equality.
+- Exact-match CVE correlation against analyst-approved advisory records, requiring verified inventory, exact CPE equality and exact firmware-version equality.
+- Evidence-backed read-only HTTPS metadata indicators for five camera manufacturers, with explicit confidence levels.
+- Daily NVD CVE API 2.0 and CISA KEV ingestion into a review-only pull request; analyst-gated approvals and provenance.
 - Transparent 0–100 triage scoring and asset-level highest-finding aggregation.
 - JSON, Markdown and TrinTech-branded PDF reports.
 - Automated unit tests and GitHub Actions workflow.
@@ -21,7 +23,7 @@ Only assess devices and networks owned by you or covered by explicit written aut
 - No UDP scans, raw sockets, packet capture, or stealth functionality.
 - Network scan scope is restricted to RFC1918 IPv4 and at most 256 addresses; concurrency and timeout are bounded.
 - Device identity and firmware are **not inferred from open ports**. Enter data from client asset records, labels, vendor exports, or a technician's verified inspection.
-- CVE matching is offline. CamGuard does not contact NVD or vendors automatically. Advisory data must be curated and checked against the original publisher.
+- CVE matching remains offline and only uses analyst-approved advisory records. The ingestion workflow retrieves public NVD and CISA KEV data into a review inbox; it never promotes candidates automatically.
 - A match is a lead for analyst validation, not proof of exploitability or compromise.
 
 ## Install
@@ -109,6 +111,62 @@ Each run creates:
 - `camguard-<timestamp>.md`
 - `camguard-assessment.pdf` (TrinTech navy/cyan/emerald branding)
 
+
+## Controlled read-only metadata collection (0.3.0)
+
+Metadata collection is opt-in and separate from the TCP scanner. Create a text file with one explicitly approved RFC1918 IPv4 address per line, then run:
+
+```bash
+python -m camguard metadata --targets targets.txt --authorized --output metadata.json
+```
+
+The initial signature set covers Axis, Hikvision, Dahua, Hanwha Vision and Uniview. It makes exactly one unauthenticated HTTPS `GET /` request per approved IP, disables redirects, caps the response body, and verifies TLS certificates. Cleartext HTTP is not supported. It does not access vendor APIs, ONVIF actions, RTSP streams, configuration endpoints, or authentication pages intentionally.
+
+Each result records the request, timestamp, HTTP status, limited Server header, page title, evidence and confidence. A vendor signature in the Server header is **medium** confidence; a signature only in the HTML title is **low**; no signature is **none**. These are weak fingerprint indicators, not proof of device identity. Model and firmware are never inferred. Corroborate manufacturer/model/firmware against labels, vendor exports or client asset records before CVE matching. TLS failures and access-denied responses are not bypassed.
+
+The command requires `--authorized`, accepts at most 64 explicit IPs, and restricts targets to RFC1918 IPv4. The flag is an attestation, not a substitute for written client permission.
+
+## Maintained CVE advisory ingestion (0.4.0)
+
+CamGuard ingests from two authoritative sources:
+- NVD CVE API 2.0: `https://services.nvd.nist.gov/rest/json/cves/2.0`
+- CISA KEV JSON catalogue: `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json`
+
+Run a manual refresh (NVD lookback is 1–120 days; default 7):
+
+```bash
+python -m camguard ingest-advisories --days 7 --output-dir data/advisories/inbox
+```
+
+An optional NVD API key can be supplied through the `NVD_API_KEY` environment variable. Do not put API keys in command-line arguments, source files, logs or pull requests. Requests are paginated, paced conservatively, retried on transient errors and validated before files are replaced. The previous inbox remains intact if retrieval or validation fails before publication.
+
+The ingestion produces:
+- `pending-review.json`: NVD records in the modified window, CVSS metadata, source references and raw CPE applicability/version bounds for analyst review; KEV status is attached where available.
+- `kev-catalog.json`: validated CISA KEV catalogue snapshot.
+- `manifest.json`: source URLs, retrieval time, NVD query window, CISA catalog version and record counts.
+
+CISA KEV entries outside the NVD modified window are retained separately in the pending file. KEV membership means CISA lists the CVE as known exploited; it does **not** prove a particular camera model or firmware is affected.
+
+### Analyst approval gate
+
+The scheduled GitHub Actions workflow runs daily at 07:17 UTC and can also be started manually. It opens or updates a pull request containing pending feed data. It does not commit directly to `main`, publish approved advisories, or change client assessment results.
+
+1. Analyst opens each candidate's NVD record and original vendor advisory.
+2. Confirm the exact product/model and interpret the vendor's affected-version statement. Do not copy an NVD version range into an exact-version list without reviewing its meaning.
+3. Add a decision to `data/advisories/approvals.json`. The template is `data/advisories/approvals.example.json`. Use `decision: "approved"` only after review; otherwise leave it pending or mark it rejected.
+4. For approved records, provide an exact CPE, explicit affected firmware versions, CVSS base score, HTTPS source, summary, reviewer identifier and ISO-8601 review timestamp. Set `kev: true` only when the CVE appears in the current CISA catalogue.
+5. Validate and export:
+
+```bash
+python -m camguard export-approved --approvals data/advisories/approvals.json --output data/advisories/approved-advisories.json
+```
+
+6. Have a second authorized reviewer inspect the approval change in GitHub before merging. Configure repository branch protection to require at least one independent review and passing status checks; do not allow self-approval for production advisory changes.
+
+Only records with `decision: "approved"` are exported. The exporter rejects missing reviewer metadata, invalid CVE IDs, missing exact CPEs, empty affected-version lists, invalid CVSS scores, and non-HTTPS source references. The existing assessment matcher still requires verified device inventory and exact CPE plus firmware equality. Pending feed candidates are not accepted as the approved `advisories` dataset.
+
+The scheduled job needs no secrets for public feeds. An optional repository Actions secret named `NVD_API_KEY` improves NVD request allowance. GitHub Actions uses the repository's `GITHUB_TOKEN` to open the review pull request with only the permissions declared in the workflow. Feed failures fail the job and do not replace the previous inbox.
+
 ## Development
 
 ```bash
@@ -118,11 +176,9 @@ python -m camguard --help
 
 ## Roadmap
 
-1. Vendor-supported, non-invasive device metadata collection with explicit per-client approval.
-2. Curated advisory ingestion with source provenance, freshness and version-range review.
-3. Guided configuration hardening checklist.
-4. Finding lifecycle, remediation evidence and historical comparisons.
-5. Optional client-approved monitoring.
+1. Guided camera/NVR configuration hardening checklist.
+2. Finding lifecycle, remediation evidence and historical comparisons.
+3. Optional client-approved monitoring and alerting.
 
 ## TrinTech Digital Defense
 

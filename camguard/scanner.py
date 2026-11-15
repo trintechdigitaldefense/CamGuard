@@ -97,7 +97,7 @@ def scan_network(cidr: str, authorized: bool, timeout: float = 0.8, workers: int
                 "recommendation": recommendation,
             })
     return {
-        "tool": "TrinTech CamGuard", "version": "0.1.0",
+        "tool": "TrinTech CamGuard", "version": "0.4.0",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "scope": {"cidr": str(network), "addresses_considered": len(hosts), "authorization_attested": True},
         "scan_type": "bounded TCP reachability checks; no authentication or exploitation",
