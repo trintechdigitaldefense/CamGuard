@@ -58,6 +58,3 @@ jobs:
             4. Run `camguard export-approved` and review its output before merging approval changes.
 
             KEV membership indicates known exploitation in the wild, not applicability to a particular device.
-          labels: |
-            security
-            advisory-review
