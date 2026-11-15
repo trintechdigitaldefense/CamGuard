@@ -2,65 +2,127 @@
 
 **CCTV & IP Camera Cybersecurity Assessment**
 
-CamGuard is an authorized, scope-limited network inventory and security assessment tool from TrinTech Digital Defense. The first MVP focuses on safe TCP service discovery, asset inventory, risk findings, and JSON/Markdown reporting.
+CamGuard is an authorized, scope-limited network inventory and assessment tool from TrinTech Digital Defense.
 
-> **Authorization required:** Only assess networks and devices that you own or have explicit written permission to test. The operator must confirm authorization with `--authorized`. This flag is an operator attestation, not a substitute for written client consent.
+## Current capabilities (0.2.0)
 
-## MVP capabilities
+- Bounded TCP reachability inventory for common camera/NVR ports on explicitly authorized RFC1918 IPv4 scopes.
+- Operator-supplied camera/NVR manufacturer, model, firmware and CPE inventory (JSON or CSV).
+- Exact-match CVE correlation against a local advisory JSON file. Matching requires a verified inventory record, exact CPE equality and exact firmware-version equality.
+- Transparent 0–100 triage scoring and asset-level highest-finding aggregation.
+- JSON, Markdown and TrinTech-branded PDF reports.
+- Automated unit tests and GitHub Actions workflow.
 
-- IPv4 CIDR scope validation (private IPv4 ranges only by default).
-- Bounded TCP connection checks for common CCTV/NVR management and streaming ports.
-- Asset inventory with responsive ports and timestamps.
-- Conservative findings for exposed management services.
-- JSON and Markdown reports; no passwords, video streams, or credentials are collected.
-- Unit tests using Python's standard library.
+## Authorization and safety
 
-## Safety limits
+Only assess devices and networks owned by you or covered by explicit written authorization. The `--authorized` flag is an operator attestation, not a substitute for written client consent.
 
-- No exploitation, password guessing, brute force, authentication attempts, RTSP stream access, or camera footage collection.
+- No exploitation, password guessing, brute force, authentication attempts, RTSP stream access, video collection, or configuration changes.
 - No UDP scans, raw sockets, packet capture, or stealth functionality.
-- The default maximum scope is 256 addresses; concurrency and connection timeout are bounded.
-- The tool checks TCP reachability only. An open port does not prove a vulnerability.
-- Firmware/CVE correlation, authenticated configuration review, and continuous monitoring are planned follow-on features, not implemented claims.
+- Network scan scope is restricted to RFC1918 IPv4 and at most 256 addresses; concurrency and timeout are bounded.
+- Device identity and firmware are **not inferred from open ports**. Enter data from client asset records, labels, vendor exports, or a technician's verified inspection.
+- CVE matching is offline. CamGuard does not contact NVD or vendors automatically. Advisory data must be curated and checked against the original publisher.
+- A match is a lead for analyst validation, not proof of exploitability or compromise.
 
-## Requirements
+## Install
 
-- Python 3.10+
-- No third-party dependencies for the MVP
-
-## Quick start
+Python 3.10+ is required.
 
 ```bash
-python -m camguard --help
-python -m camguard scan --cidr 192.168.10.0/24 --authorized --output-dir reports
+git clone https://github.com/trintechdigitaldefense/CamGuard.git
+cd CamGuard
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+python -m unittest discover -s tests -v
 ```
 
-Run the command only after confirming written authorization and that the CIDR exactly matches the approved scope.
+## 1. Authorized network inventory
 
-## Example output
+Replace the sample range with the exact private network in the signed scope document:
 
-CamGuard writes:
-- `camguard-<timestamp>.json` — machine-readable inventory and findings
-- `camguard-<timestamp>.md` — human-readable assessment summary
+```bash
+python -m camguard scan --cidr 192.168.10.0/28 --authorized --output-dir reports
+```
+
+This checks TCP reachability only. It does not log into devices or access video streams.
+
+## 2. Device intelligence and CVE matching
+
+Create an inventory JSON file. Manufacturer, model, firmware and CPE must be sourced from client records or verified technician inspection. Mark a record `verified: true` only after checking the source.
+
+```json
+{
+  "devices": [
+    {
+      "ip": "192.168.10.20",
+      "vendor": "Example Manufacturer",
+      "model": "Camera Model X",
+      "firmware": "1.2.3",
+      "cpe": "cpe:2.3:o:example:camera_model_x_firmware:1.2.3:*:*:*:*:*:*:*",
+      "source": "Client asset register checked against device label",
+      "verified": true
+    }
+  ]
+}
+```
+
+Create a local advisory JSON file:
+
+```json
+{
+  "advisories": [
+    {
+      "cve": "CVE-2024-12345",
+      "cpe": "cpe:2.3:o:example:camera_model_x_firmware:1.2.3:*:*:*:*:*:*:*",
+      "affected_versions": ["1.2.3"],
+      "cvss_base_score": 8.1,
+      "source": "https://vendor.example/security-advisory",
+      "summary": "Replace with the advisory publisher's verified summary."
+    }
+  ]
+}
+```
+
+The example CVE and vendor data above are placeholders, **not a real vulnerability claim**. Replace them with validated advisory records before client use. Version matching is exact by design; ranges, aliases and vendor-specific version semantics require analyst review and are not guessed.
+
+Run offline enrichment:
+
+```bash
+python -m camguard assess --inventory inventory.json --advisories advisories.json --output-dir reports
+```
+
+The command does not perform network probes. Manufacturer/model/firmware details are included as supplied and labelled by verification status.
+
+## Risk scoring
+
+- CVE findings: CVSS base score × 10.
+- Reachable-service observations: conservative heuristic values (informational 10, low 30, medium 55).
+- Asset score: highest finding score for that asset; scores are not added together.
+- CVSS and heuristic scores are triage aids, not probability of compromise.
+- Internet exposure, business impact, compensating controls and environmental exploitability are not currently assessed.
+
+## Reports
+
+Each run creates:
+- `camguard-<timestamp>.json`
+- `camguard-<timestamp>.md`
+- `camguard-assessment.pdf` (TrinTech navy/cyan/emerald branding)
 
 ## Development
 
 ```bash
 python -m unittest discover -s tests -v
+python -m camguard --help
 ```
-
-## Project status
-
-**MVP foundation — active development.** This release is a bounded TCP inventory and reporting prototype, not a full CCTV vulnerability scanner or managed monitoring service.
 
 ## Roadmap
 
-1. MVP: scoped TCP discovery, findings, JSON/Markdown reports.
-2. Asset enrichment: vendor/model/firmware inventory from operator-provided records.
-3. Advisory matching: curated CVE references with source and confidence tracking.
-4. Configuration review: guided, non-invasive checks for NVR/router/camera settings.
-5. PDF reporting and remediation history.
-6. Optional scheduled monitoring with explicit client approval.
+1. Vendor-supported, non-invasive device metadata collection with explicit per-client approval.
+2. Curated advisory ingestion with source provenance, freshness and version-range review.
+3. Guided configuration hardening checklist.
+4. Finding lifecycle, remediation evidence and historical comparisons.
+5. Optional client-approved monitoring.
 
 ## TrinTech Digital Defense
 
