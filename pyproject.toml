@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trintech-camguard"
-version = "0.1.0"
+version = "0.2.0"
 description = "Authorized CCTV and IP camera network security assessment"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Proprietary"}
 authors = [{name = "TrinTech Digital Defense"}]
-dependencies = []
+dependencies = ["reportlab>=4.0"]
 
 [project.scripts]
 camguard = "camguard.cli:main"
