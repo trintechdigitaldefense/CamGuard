@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from camguard.advisory_ingest import (
-    AdvisoryIngestionError, _configurations, _cvss, export_approved, ingest_sources,
+    AdvisoryIngestionError, _configurations, _cvss, _valid_cpe23, export_approved, ingest_sources,
 )
 
 
@@ -19,6 +19,12 @@ class FakeResponse:
 
 
 class AdvisoryIngestionTests(unittest.TestCase):
+    def test_cpe23_validation_checks_component_count_and_part(self):
+        self.assertTrue(_valid_cpe23("cpe:2.3:o:vendor:camera:1.0:*:*:*:*:*:*:*"))
+        self.assertFalse(_valid_cpe23("cpe:2.3:o:vendor:camera"))
+        self.assertFalse(_valid_cpe23("cpe:2.3:x:vendor:camera:1.0:*:*:*:*:*:*:*"))
+        self.assertFalse(_valid_cpe23("cpe:2.3:o:vendor::1.0:*:*:*:*:*:*:*"))
+
     def test_extracts_cvss_and_preserves_version_bounds(self):
         cve = {
             "metrics": {"cvssMetricV31": [{"cvssData": {"baseScore": 8.8, "version": "3.1", "vectorString": "AV:N"}}]},
@@ -56,6 +62,18 @@ class AdvisoryIngestionTests(unittest.TestCase):
             self.assertEqual(len(calls), 2)
             self.assertIsNotNone(calls[0][1])
             self.assertIsNone(calls[1][1])
+
+    def test_rejects_invalid_cisa_dates(self):
+        def opener(request, timeout=30):
+            if "nvd.nist.gov" in request.full_url:
+                return FakeResponse({"totalResults": 0, "vulnerabilities": []})
+            return FakeResponse({"catalogVersion": "test", "dateReleased": "not-a-date",
+                                 "count": 1, "vulnerabilities": [{"cveID": "CVE-2026-1234",
+                                 "vendorProject": "V", "product": "P", "vulnerabilityName": "N",
+                                 "dateAdded": "2026-01-01", "shortDescription": "D",
+                                 "requiredAction": "Patch", "dueDate": "2026-02-01"}]})
+        with tempfile.TemporaryDirectory() as folder, self.assertRaises(AdvisoryIngestionError):
+            ingest_sources(folder, days=1, now=datetime(2026,1,3,tzinfo=timezone.utc), opener=opener)
 
     def test_rejects_bad_kev_schema(self):
         def opener(request, timeout=30):
