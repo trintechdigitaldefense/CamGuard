@@ -38,7 +38,10 @@ jobs:
         run: |
           DAYS="${{ inputs.lookback_days || '7' }}"
           python -m camguard ingest-advisories --days "$DAYS" --output-dir data/advisories/inbox
-      - name: Validate code and ingestion tests before publishing inbox\n        run: |\n          python -m unittest discover -s tests -v\n          python -m camguard --help\n      - name: Open or update analyst review pull request
+      - name: Validate code and ingestion tests before publishing inbox
+        run: |
+          python -m unittest discover -s tests -v
+          python -m camguard --help\n      - name: Open or update analyst review pull request
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
