@@ -147,7 +147,8 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
         # NVD documents tighter request rates without an API key; conservative pacing.
         time.sleep(0.7 if api_key else 6.1)
 
-    nvd_items = list(nvd_by_id.values())\n    kev = _get_json(KEV_URL, kev_headers, opener=opener)
+    nvd_items = list(nvd_by_id.values())
+    kev = _get_json(KEV_URL, kev_headers, opener=opener)
     vulnerabilities = kev.get("vulnerabilities")
     if not isinstance(vulnerabilities, list) or not isinstance(kev.get("count"), int) or kev.get("count") != len(vulnerabilities):
         raise AdvisoryIngestionError("CISA KEV response failed required schema checks.")
@@ -155,7 +156,10 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
     for row in vulnerabilities:
         if not isinstance(row, dict) or not CVE_RE.fullmatch(str(row.get("cveID", ""))) or not all(row.get(k) for k in ("vendorProject", "product", "vulnerabilityName", "dateAdded", "shortDescription", "requiredAction", "dueDate")):
             raise AdvisoryIngestionError("CISA KEV contains an invalid CVE identifier.")
-        kev_id = row["cveID"].upper()\n        if kev_id in kev_by_id:\n            raise AdvisoryIngestionError(f"CISA KEV contains duplicate CVE ID: {kev_id}")\n        kev_by_id[kev_id] = {
+        kev_id = row["cveID"].upper()
+        if kev_id in kev_by_id:
+            raise AdvisoryIngestionError(f"CISA KEV contains duplicate CVE ID: {kev_id}")
+        kev_by_id[kev_id] = {
             "vendor_project": row.get("vendorProject"),
             "product": row.get("product"),
             "vulnerability_name": row.get("vulnerabilityName"),
@@ -182,7 +186,8 @@ def ingest_sources(output_dir: str, days: int = 7, api_key: str | None = None,
 
     # KEV entries are also retained even if absent from the recent NVD modification window.
     nvd_ids = {item["cve"] for item in candidates}
-    kev_only = [{"cve": cve, "source_url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",\n                 "cisa_kev": True, "kev_details": data,
+    kev_only = [{"cve": cve, "source_url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+                 "cisa_kev": True, "kev_details": data,
                  "nvd_record_in_window": False, "review_status": "pending",
                  "approval_note": "KEV presence alone does not establish affected product/version."}
                 for cve, data in kev_by_id.items() if cve not in nvd_ids]
