@@ -33,7 +33,7 @@ class AdvisoryIngestionTests(unittest.TestCase):
     def test_ingestion_writes_pending_not_approved(self):
         calls = []
         def opener(request, timeout=30):
-            calls.append((request.full_url, request.get_header("Api-key")))
+            calls.append((request.full_url, next((value for key, value in request.header_items() if key.lower() == "apikey"), None)))
             if "nvd.nist.gov" in request.full_url:
                 return FakeResponse({"totalResults": 1, "vulnerabilities": [{
                     "cve": {"id": "CVE-2026-1234", "published": "2026-01-01T00:00:00.000",
