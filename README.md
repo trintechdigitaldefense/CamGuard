@@ -109,6 +109,25 @@ Each run creates:
 - `camguard-<timestamp>.md`
 - `camguard-assessment.pdf` (TrinTech navy/cyan/emerald branding)
 
+
+## Controlled read-only metadata collection (0.3.0)
+
+Metadata collection is opt-in and separate from the TCP scanner. Create a text file with one explicitly approved RFC1918 IPv4 address per line, then run:
+
+```bash
+python -m camguard metadata --targets targets.txt --authorized --output metadata.json
+```
+
+The initial signature set covers Axis, Hikvision, Dahua, Hanwha Vision and Uniview. It makes exactly one unauthenticated HTTPS `GET /` request per approved IP, disables redirects, caps the response body, and verifies TLS certificates. Cleartext HTTP is not supported. It does not access vendor APIs, ONVIF actions, RTSP streams, configuration endpoints, or authentication pages intentionally.
+
+Each result records the request, timestamp, HTTP status, limited Server header, page title, evidence and confidence. A vendor signature in the Server header is **medium** confidence; a signature only in the HTML title is **low**; no signature is **none**. These are weak fingerprint indicators, not proof of device identity. Model and firmware are never inferred. Corroborate manufacturer/model/firmware against labels, vendor exports or client asset records before CVE matching. TLS failures and access-denied responses are not bypassed.
+
+The command requires `--authorized`, accepts at most 64 explicit IPs, and restricts targets to RFC1918 IPv4. The flag is an attestation, not a substitute for written client permission.
+
+## Maintained CVE advisory ingestion — next phase
+
+The advisory loader remains offline/local in this release. The ingestion phase should use the official NVD API and CISA Known Exploited Vulnerabilities (KEV) catalogue, preserve source URLs and retrieval/modification timestamps, validate and deduplicate records, and retain the last known-good dataset when a feed fails. CPE applicability and vendor version semantics must be reviewed; ambiguous ranges go to an analyst queue rather than being guessed. KEV status raises remediation priority but does not prove a particular device is affected. Feed updates should create reviewed pull requests, not silently overwrite production advisory data. No live feed ingestion is enabled by this milestone.
+
 ## Development
 
 ```bash
