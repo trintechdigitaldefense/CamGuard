@@ -7,7 +7,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlsplit
@@ -75,6 +75,52 @@ def _cvss(cve: dict[str, Any]) -> tuple[float | None, str | None, str | None]:
             return float(score), str(data.get("version") or key), str(data.get("vectorString") or "")
     return None, None, None
 
+
+def _valid_cpe23(value: str) -> bool:
+    """Validate the structure of a CPE 2.3 formatted-string binding."""
+    if not isinstance(value, str) or not value.startswith("cpe:2.3:"):
+        return False
+    parts = value.split(":")
+    if len(parts) != 13 or parts[0] != "cpe" or parts[1] != "2.3":
+        return False
+    components = parts[2:]
+    if components[0] not in {"a", "o", "h"}:
+        return False
+    for component in components:
+        if not component or any(ord(ch) < 0x21 or ord(ch) == 0x7f for ch in component):
+            return False
+        index = 0
+        while index < len(component):
+            if component[index] == "\\":
+                index += 1
+                if index >= len(component) or component[index] not in '!"#$%&\'()+,/:;<=>@[]^{}|~\\':
+                    return False
+            index += 1
+    return True
+
+
+def _iso_date(value: Any, field: str) -> str:
+    if not isinstance(value, str):
+        raise AdvisoryIngestionError(f"CISA KEV {field} must be an ISO date.")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise AdvisoryIngestionError(f"CISA KEV {field} must be an ISO date.") from exc
+    if parsed.isoformat() != value:
+        raise AdvisoryIngestionError(f"CISA KEV {field} must use YYYY-MM-DD format.")
+    return value
+
+
+def _iso_datetime(value: Any, field: str) -> str:
+    if not isinstance(value, str):
+        raise AdvisoryIngestionError(f"CISA KEV {field} must be a timezone-aware ISO timestamp.")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise AdvisoryIngestionError(f"CISA KEV {field} must be a timezone-aware ISO timestamp.") from exc
+    if parsed.tzinfo is None:
+        raise AdvisoryIngestionError(f"CISA KEV {field} must include a timezone.")
+    return value
 
 def _configurations(cve: dict[str, Any]) -> list[dict[str, Any]]:
     """Preserve source CPE criteria and bounds for analyst review; do not interpret ranges."""
@@ -186,11 +232,13 @@ def ingest_sources(
     kev_items = kev.get("vulnerabilities")
     if (
         not isinstance(kev_items, list)
+        or isinstance(kev.get("count"), bool)
         or not isinstance(kev.get("count"), int)
         or kev.get("count") != len(kev_items)
     ):
         raise AdvisoryIngestionError("CISA KEV response failed required schema/count checks.")
 
+    _iso_datetime(kev.get("dateReleased"), "dateReleased")
     kev_by_id: dict[str, dict[str, Any]] = {}
     required_fields = (
         "vendorProject", "product", "vulnerabilityName", "dateAdded",
@@ -203,6 +251,10 @@ def ingest_sources(
             or not all(row.get(key) for key in required_fields)
         ):
             raise AdvisoryIngestionError("CISA KEV contains an invalid or incomplete entry.")
+        date_added = _iso_date(row.get("dateAdded"), "dateAdded")
+        due_date = _iso_date(row.get("dueDate"), "dueDate")
+        if due_date < date_added:
+            raise AdvisoryIngestionError("CISA KEV dueDate cannot precede dateAdded.")
         kev_id = row["cveID"].upper()
         if kev_id in kev_by_id:
             raise AdvisoryIngestionError(f"CISA KEV contains duplicate CVE ID: {kev_id}")
@@ -210,10 +262,10 @@ def ingest_sources(
             "vendor_project": row.get("vendorProject"),
             "product": row.get("product"),
             "vulnerability_name": row.get("vulnerabilityName"),
-            "date_added": row.get("dateAdded"),
+            "date_added": date_added,
             "short_description": row.get("shortDescription"),
             "required_action": row.get("requiredAction"),
-            "due_date": row.get("dueDate"),
+            "due_date": due_date,
             "known_ransomware_campaign_use": row.get("knownRansomwareCampaignUse"),
             "cwes": row.get("cwes", []),
             "notes": row.get("notes"),
@@ -319,8 +371,8 @@ def export_approved(approvals_path: str, output_path: str) -> int:
         score = row.get("cvss_base_score")
         if not CVE_RE.fullmatch(cve) or cve in seen:
             raise ValueError(f"Invalid or duplicate approved CVE: {cve}")
-        if not isinstance(cpe, str) or not cpe.startswith("cpe:2.3:"):
-            raise ValueError(f"{cve}: analyst must supply an exact CPE 2.3 identifier.")
+        if not _valid_cpe23(cpe):
+            raise ValueError(f"{cve}: analyst must supply a structurally valid CPE 2.3 formatted-string identifier.")
         if (
             not isinstance(versions, list)
             or not versions
