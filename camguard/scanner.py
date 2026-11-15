@@ -1,4 +1,4 @@
-"""Conservative TCP inventory for explicitly authorized private IPv4 scopes."""
+"""Conservative TCP inventory for explicitly authorized RFC1918 IPv4 scopes."""
 from __future__ import annotations
 
 import ipaddress
@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
 
-# Common camera/NVR services. These are reachability checks, not vulnerability tests.
 CAMERA_PORTS: dict[int, str] = {
     80: "HTTP management",
     443: "HTTPS management",
@@ -19,6 +18,7 @@ CAMERA_PORTS: dict[int, str] = {
     34567: "Vendor service (varies by vendor)",
     37777: "Vendor service (varies by vendor)",
 }
+RFC1918 = tuple(ipaddress.ip_network(x) for x in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
 MAX_ADDRESSES = 256
 MAX_WORKERS = 32
 MAX_TIMEOUT = 2.0
@@ -37,8 +37,8 @@ def validate_scope(cidr: str, authorized: bool, max_addresses: int = MAX_ADDRESS
         raise ScopeError(f"Invalid network: {exc}") from exc
     if network.version != 4:
         raise ScopeError("Only IPv4 scopes are supported in this MVP.")
-    if not network.is_private:
-        raise ScopeError("Only private IPv4 networks are allowed in this MVP.")
+    if not any(network.subnet_of(allowed) for allowed in RFC1918):
+        raise ScopeError("Only RFC1918 private IPv4 networks (10/8, 172.16/12, 192.168/16) are allowed.")
     if network.num_addresses > max_addresses:
         raise ScopeError(f"Scope contains {network.num_addresses} addresses; maximum is {max_addresses}.")
     hosts = list(network.hosts())
@@ -80,20 +80,16 @@ def scan_network(cidr: str, authorized: bool, timeout: float = 0.8, workers: int
     for asset in assets:
         for port in asset["open_ports"]:
             if port["port"] in (80, 8080):
-                severity = "medium"
-                title = "HTTP management service reachable"
+                severity, title = "medium", "HTTP management service reachable"
                 recommendation = "Confirm whether HTTP is required; prefer HTTPS and restrict management access to trusted administration hosts."
             elif port["port"] in (8000, 8899, 34567, 37777):
-                severity = "medium"
-                title = "Vendor-specific service reachable"
+                severity, title = "medium", "Vendor-specific service reachable"
                 recommendation = "Identify the vendor and service, confirm business need, and restrict access at the network boundary."
             elif port["port"] == 554:
-                severity = "low"
-                title = "RTSP service reachable"
+                severity, title = "low", "RTSP service reachable"
                 recommendation = "Confirm RTSP is required and restrict it to authorized viewing/recording systems. CamGuard did not access any stream."
             else:
-                severity = "info"
-                title = "Management or camera service reachable"
+                severity, title = "info", "Management or camera service reachable"
                 recommendation = "Confirm the service is expected and restrict access to approved management systems."
             findings.append({
                 "asset_ip": asset["ip"], "port": port["port"], "service": port["service"],
