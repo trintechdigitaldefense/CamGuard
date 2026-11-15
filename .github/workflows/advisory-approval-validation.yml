@@ -1,0 +1,32 @@
+name: Advisory approval validation
+
+on:
+  pull_request:
+    paths:
+      - "data/advisories/approvals.json"
+      - "data/advisories/approved-advisories.json"
+      - "camguard/advisory_ingest.py"
+      - "camguard/intelligence.py"
+      - "tests/test_advisory_ingest.py"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-approvals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Validate approved records
+        run: |
+          if [ -f data/advisories/approvals.json ]; then
+            python -m camguard export-approved --approvals data/advisories/approvals.json --output /tmp/approved-advisories.json
+          else
+            echo "No approvals file changed; schema/unit tests still run in the main test workflow."
+          fi
+      - name: Run ingestion and approval tests
+        run: python -m unittest tests.test_advisory_ingest -v
