@@ -244,15 +244,19 @@ def export_approved(approvals_path: str, output_path: str) -> int:
         if not reviewer or not reviewed_at:
             raise ValueError(f"{cve}: reviewed_by and reviewed_at are required.")
         try:
-            parsed_reviewed_at = datetime.fromisoformat(reviewed_at.replace("Z", "+00:00"))\n            if parsed_reviewed_at.tzinfo is None:\n                raise ValueError("timezone is required")
+            parsed_reviewed_at = datetime.fromisoformat(reviewed_at.replace("Z", "+00:00"))
+            if parsed_reviewed_at.tzinfo is None:
+                raise ValueError("timezone is required")
         except ValueError as exc:
             raise ValueError(f"{cve}: reviewed_at must be ISO-8601.") from exc
         if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0 <= score <= 10:
             raise ValueError(f"{cve}: valid CVSS base score is required.")
         source = str(row.get("source", "")).strip()
         summary = str(row.get("summary", "")).strip()
-        if not source.startswith("https://") or not summary:
+        if urlsplit(source).scheme != "https" or not urlsplit(source).netloc or not summary:
             raise ValueError(f"{cve}: HTTPS source and summary are required.")
+        if not isinstance(row.get("kev", False), bool):
+            raise ValueError(f"{cve}: kev must be a JSON boolean.")
         approved.append({
             "cve": cve, "cpe": cpe, "affected_versions": sorted(set(versions)),
             "cvss_base_score": float(score), "source": source, "summary": summary,
