@@ -33,7 +33,7 @@ class AdvisoryIngestionTests(unittest.TestCase):
     def test_ingestion_writes_pending_not_approved(self):
         calls = []
         def opener(request, timeout=30):
-            calls.append(request.full_url)
+            calls.append((request.full_url, request.get_header("Api-key")))
             if "nvd.nist.gov" in request.full_url:
                 return FakeResponse({"totalResults": 1, "vulnerabilities": [{
                     "cve": {"id": "CVE-2026-1234", "published": "2026-01-01T00:00:00.000",
@@ -48,12 +48,14 @@ class AdvisoryIngestionTests(unittest.TestCase):
                                      "shortDescription": "D", "requiredAction": "Patch", "dueDate": "2026-02-01"
                                  }]})
         with tempfile.TemporaryDirectory() as folder:
-            paths = ingest_sources(folder, days=1, now=datetime(2026,1,3,tzinfo=timezone.utc), opener=opener)
+            paths = ingest_sources(folder, days=1, api_key="test-nvd-key", now=datetime(2026,1,3,tzinfo=timezone.utc), opener=opener)
             pending = json.loads(Path(paths["pending"]).read_text())
             self.assertTrue(pending["candidates"][0]["cisa_kev"])
             self.assertEqual(pending["candidates"][0]["review_status"], "pending")
             self.assertNotIn("advisories", pending)
             self.assertEqual(len(calls), 2)
+            self.assertIsNotNone(calls[0][1])
+            self.assertIsNone(calls[1][1])
 
     def test_rejects_bad_kev_schema(self):
         def opener(request, timeout=30):
