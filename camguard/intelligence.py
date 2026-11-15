@@ -61,6 +61,9 @@ def load_advisories(path: str) -> list[dict[str, Any]]:
             "cve": cve, "cpe": cpe, "affected_versions": [str(v) for v in versions],
             "cvss_base_score": score, "source": _clean(row.get("source")) or "unspecified advisory source",
             "summary": _clean(row.get("summary")) or "No summary supplied.",
+            "kev": bool(row.get("kev", False)),
+            "reviewed_by": _clean(row.get("reviewed_by")),
+            "reviewed_at": _clean(row.get("reviewed_at")),
         })
     return clean
 
@@ -91,6 +94,9 @@ def enrich_assets(result: dict[str, Any], inventory: dict[str, dict[str, Any]],
                         "source": advisory["source"], "summary": advisory["summary"],
                         "evidence": f"Verified inventory exact-match: CPE {record['cpe']}, firmware {record['firmware']}.",
                         "severity": _cvss_severity(advisory["cvss_base_score"]),
+                        "cisa_kev": bool(advisory.get("kev", False)),
+                        "reviewed_by": advisory.get("reviewed_by"),
+                        "reviewed_at": advisory.get("reviewed_at"),
                     })
         device["matched_cves"] = [item["cve"] for item in matches]
         enriched.append(device)
