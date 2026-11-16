@@ -177,6 +177,7 @@ def record_decision(
     evidence_url: str,
     cpe: str = "",
     affected_versions: list[str] | None = None,
+    cvss_score: float | None = None,
 ) -> dict[str, Any]:
     """Record a review decision; append audit first and atomically update approvals."""
     cve = str(cve).upper().strip()
@@ -217,9 +218,13 @@ def record_decision(
         versions = sorted(set(v.strip() for v in versions))
         score = candidate.get("cvss_base_score")
         if score is None:
-            raise ReviewError("No NVD CVSS score is available; do not invent one for this workflow.")
+            score = cvss_score
+            if score is None:
+                raise ReviewError("KEV-only approval requires an analyst-sourced CVSS score.")
+        elif cvss_score is not None and cvss_score != score:
+            raise ReviewError("Supplied CVSS score must match the NVD source score.")
         if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0 <= score <= 10:
-            raise ReviewError("The source CVSS score is invalid.")
+            raise ReviewError("The CVSS score is invalid.")
     else:
         cpe, versions, score = "", [], candidate.get("cvss_base_score")
 
@@ -319,8 +324,12 @@ def export_reviewed_approvals(approvals_path: str | Path, inbox_path: str | Path
         if parsed.scheme != "https" or not parsed.netloc:
             raise ReviewError(f"{cve} requires an HTTPS vendor evidence source.")
         score = candidate.get("cvss_base_score")
-        if score is None or row.get("cvss_base_score") != score:
+        approved_score = row.get("cvss_base_score")
+        if isinstance(approved_score, bool) or not isinstance(approved_score, (int, float)) or not 0 <= approved_score <= 10:
+            raise ReviewError(f"{cve} has an invalid CVSS score.")
+        if score is not None and approved_score != score:
             raise ReviewError(f"{cve} CVSS score must match the NVD source record.")
+        score = approved_score
         event = latest.get(cve)
         if not event or event.get("decision") != "approved":
             raise ReviewError(f"{cve} has no latest approved decision in the audit log.")
