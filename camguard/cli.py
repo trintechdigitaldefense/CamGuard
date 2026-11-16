@@ -55,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--rationale", help="Reason for the decision.")
     review.add_argument("--evidence-url", help="HTTPS vendor advisory/evidence URL.")
     review.add_argument("--cpe", help="Exact CPE 2.3 for an approval.")
+    review.add_argument("--cvss-score", type=float, help="Analyst-sourced CVSS score required for KEV-only candidates.")
     review.add_argument("--affected-version", action="append", default=[], help="Explicit affected firmware version; repeat as needed.")
 
     assess = sub.add_parser("assess", help="Enrich an operator-supplied verified camera inventory and match a local CVE advisory file.")
@@ -121,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.inbox, args.approvals, args.audit, args.cve, args.decision,
                 args.reviewed_by, args.rationale, args.evidence_url,
                 cpe=args.cpe or "", affected_versions=args.affected_version,
+                cvss_score=args.cvss_score,
             )
             print(f"Recorded {event['decision']} decision for {event['cve']}.")
             print(f"Audit record: {event['record_hash']}")
