@@ -75,17 +75,18 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
     if not findings:
         story.append(Paragraph("No findings were generated from the supplied evidence.", styles["BodyText"]))
     for index, finding in enumerate(findings, 1):
-        title = f"{index}. {finding.get('title', finding.get('cve', 'Finding'))} — {str(finding.get('severity', 'info')).upper()}"
-        if finding.get("cve"):
-            title = f"{index}. {finding['cve']} — {str(finding.get('severity', 'info')).upper()}"
+        raw_title = finding.get('title', finding.get('cve', 'Finding'))
+        if finding.get('cve'):
+            raw_title = finding['cve']
+        title = safe(f"{index}. {raw_title} — {str(finding.get('severity', 'info')).upper()}")
         body = [
-            f"<b>Asset:</b> {finding.get('asset_ip', 'N/A')}",
-            f"<b>Risk score:</b> {finding.get('risk_score', 0)} / 100 — {finding.get('risk_rating', 'unscored')} (confidence: {finding.get('evidence_confidence', 'unknown')})",
-            f"<b>Score components:</b> {finding.get('risk_components', {})}",
-            f"<b>Why this score:</b> {escape('; '.join(finding.get('risk_explanation', [])))}",
-            f"<b>Evidence:</b> {finding.get('evidence', finding.get('summary', 'Not supplied'))}",
-            f"<b>Recommendation:</b> {finding.get('recommendation', 'Review vendor advisory and plan remediation.')}",
-            f"<b>Source:</b> {finding.get('source', 'CamGuard observation')}",
+            f"<b>Asset:</b> {safe(finding.get('asset_ip', 'N/A'))}",
+            f"<b>Risk score:</b> {safe(finding.get('risk_score', 0))} / 100 — {safe(finding.get('risk_rating', 'unscored'))} (confidence: {safe(finding.get('evidence_confidence', 'unknown'))})",
+            f"<b>Score components:</b> {safe(finding.get('risk_components', {}))}",
+            f"<b>Why this score:</b> {safe('; '.join(str(item) for item in finding.get('risk_explanation', [])))}",
+            f"<b>Evidence:</b> {safe(finding.get('evidence', finding.get('summary', 'Not supplied')))}",
+            f"<b>Recommendation:</b> {safe(finding.get('recommendation', 'Review vendor advisory and plan remediation.'))}",
+            f"<b>Source:</b> {safe(finding.get('source', 'CamGuard observation'))}",
         ]
         story.append(KeepTogether([Paragraph(title, styles["Heading4"]), Paragraph("<br/>".join(body), styles["Small"]), Spacer(1, 5)]))
     story.append(Paragraph("Scoring methodology and limitations", styles["Section"]))
