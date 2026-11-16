@@ -68,17 +68,29 @@ def _candidate_map(inbox: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def list_pending(inbox_path: str | Path, query: str = "", kev_only: bool = False,
-                 limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+                 limit: int = 100, offset: int = 0,
+                 approvals_path: str | Path | None = None) -> list[dict[str, Any]]:
     """Return a bounded page of pending items; query matches CVE/vendor/product/description."""
     if not 1 <= limit <= 500 or offset < 0:
         raise ReviewError("limit must be 1–500 and offset cannot be negative.")
     inbox = load_inbox(inbox_path)
+    current_decisions: dict[str, str] = {}
+    if approvals_path and Path(approvals_path).exists():
+        stored = json.loads(Path(approvals_path).read_text(encoding="utf-8"))
+        stored_rows = stored.get("approvals") if isinstance(stored, dict) else None
+        if not isinstance(stored_rows, list):
+            raise ReviewError("Approvals file must contain an approvals array.")
+        current_decisions = {
+            str(row.get("cve", "")).upper(): str(row.get("decision", "pending"))
+            for row in stored_rows if isinstance(row, dict)
+        }
     groups = ("kev_only",) if kev_only else ("candidates", "kev_only")
     needle = query.casefold().strip()
     rows = []
     for group in groups:
         for item in inbox[group]:
-            if item.get("review_status", "pending") != "pending":
+            cve_id = str(item.get("cve", "")).upper()
+            if item.get("review_status", "pending") != "pending" or current_decisions.get(cve_id, "pending") != "pending":
                 continue
             kev = item.get("kev_details") or {}
             haystack = " ".join(str(value) for value in (
