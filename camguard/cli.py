@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import datetime, timezone
 
 from .advisory_ingest import AdvisoryIngestionError, export_approved, ingest_sources
 from .intelligence import enrich_assets, load_advisories, load_inventory
+from .manufacturer_intel import normalize_device_identity, supported_manufacturers
 from .metadata import collect_metadata
 from .pdf_report import write_pdf_report
 from .reporting import write_reports
@@ -41,22 +43,37 @@ def build_parser() -> argparse.ArgumentParser:
     approve.add_argument("--audit", default="data/advisories/review-audit.jsonl", help="Hash-chained analyst review audit log.")
 
     review = sub.add_parser("review-advisories", help="Search pending advisories, record analyst decisions and verify the audit log.")
-    review.add_argument("action", choices=("list", "decide", "verify-audit"))
-    review.add_argument("--inbox", default="data/advisories/inbox/pending-review.json")
-    review.add_argument("--approvals", default="data/advisories/approvals.json")
-    review.add_argument("--audit", default="data/advisories/review-audit.jsonl")
-    review.add_argument("--query", default="", help="Search CVE, vendor, product or description.")
-    review.add_argument("--limit", type=int, default=50)
-    review.add_argument("--offset", type=int, default=0)
-    review.add_argument("--kev-only", action="store_true")
-    review.add_argument("--cve", help="CVE identifier for a decision.")
-    review.add_argument("--decision", choices=("approved", "rejected", "pending"))
-    review.add_argument("--reviewed-by", help="Analyst identifier.")
-    review.add_argument("--rationale", help="Reason for the decision.")
-    review.add_argument("--evidence-url", help="HTTPS vendor advisory/evidence URL.")
-    review.add_argument("--cpe", help="Exact CPE 2.3 for an approval.")
-    review.add_argument("--cvss-score", type=float, help="Analyst-sourced CVSS score required for KEV-only candidates.")
-    review.add_argument("--affected-version", action="append", default=[], help="Explicit affected firmware version; repeat as needed.")
+    review_actions = review.add_subparsers(dest="review_action", required=True)
+
+    review_list = review_actions.add_parser("list", help="List and search pending advisory candidates.")
+    review_list.add_argument("--inbox", default="data/advisories/inbox/pending-review.json", help="Pending advisory inbox JSON.")
+    review_list.add_argument("--approvals", default="data/advisories/approvals.json", help="Existing analyst decisions to hide from the queue.")
+    review_list.add_argument("--query", default="", help="Search CVE, vendor, product or description.")
+    review_list.add_argument("--limit", type=int, default=50, help="Maximum results (1–500).")
+    review_list.add_argument("--offset", type=int, default=0, help="Number of matching results to skip.")
+    review_list.add_argument("--kev-only", action="store_true", help="Show only CISA KEV entries.")
+
+    review_decide = review_actions.add_parser("decide", help="Record an analyst decision with evidence and an audit entry.")
+    review_decide.add_argument("--inbox", default="data/advisories/inbox/pending-review.json", help="Pending advisory inbox JSON.")
+    review_decide.add_argument("--approvals", default="data/advisories/approvals.json", help="Analyst decisions JSON output.")
+    review_decide.add_argument("--audit", default="data/advisories/review-audit.jsonl", help="Hash-chained audit log.")
+    review_decide.add_argument("--cve", required=True, help="CVE identifier to review.")
+    review_decide.add_argument("--decision", required=True, choices=("approved", "rejected", "pending"))
+    review_decide.add_argument("--reviewed-by", required=True, help="Analyst identifier.")
+    review_decide.add_argument("--rationale", required=True, help="Reason for the decision.")
+    review_decide.add_argument("--evidence-url", required=True, help="HTTPS vendor advisory/evidence URL.")
+    review_decide.add_argument("--cpe", help="Exact CPE 2.3 for an approval.")
+    review_decide.add_argument("--cvss-score", type=float, help="Analyst-sourced CVSS score required for KEV-only candidates.")
+    review_decide.add_argument("--affected-version", action="append", default=[], help="Explicit affected firmware version; repeat as needed.")
+
+    review_verify = review_actions.add_parser("verify-audit", help="Verify the hash chain in the analyst audit log.")
+    review_verify.add_argument("--audit", default="data/advisories/review-audit.jsonl", help="Hash-chained audit log to verify.")
+
+    normalize = sub.add_parser("normalize-device", help="Normalize a supplied manufacturer and generic product-family alias.")
+    normalize.add_argument("--vendor", required=True, help="Manufacturer name or known alias.")
+    normalize.add_argument("--product", help="Product family or model name; unknown model identifiers are preserved.")
+
+    sub.add_parser("manufacturer-catalog", help="Show supported CCTV manufacturer names and exact aliases.")
 
     assess = sub.add_parser("assess", help="Enrich an operator-supplied verified camera inventory and match a local CVE advisory file.")
     assess.add_argument("--inventory", required=True, help="JSON or CSV inventory supplied from approved client records.")
@@ -84,7 +101,6 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "metadata":
             from pathlib import Path
-            import json
             targets = [line.strip() for line in Path(args.targets).read_text(encoding="utf-8").splitlines() if line.strip() and not line.lstrip().startswith("#")]
             result = collect_metadata(targets, args.authorized, timeout=args.timeout)
             Path(args.output).write_text(json.dumps(result, indent=2), encoding="utf-8")
@@ -105,19 +121,15 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "review-advisories":
             from .advisory_review import list_pending, record_decision, verify_audit
-            import json
-            if args.action == "list":
+            if args.review_action == "list":
                 rows = list_pending(args.inbox, query=args.query, kev_only=args.kev_only,
                                     limit=args.limit, offset=args.offset,
                                     approvals_path=args.approvals)
                 print(json.dumps({"count": len(rows), "offset": args.offset, "items": rows}, indent=2))
                 return 0
-            if args.action == "verify-audit":
+            if args.review_action == "verify-audit":
                 print(json.dumps(verify_audit(args.audit), indent=2))
                 return 0
-            required = (args.cve, args.decision, args.reviewed_by, args.rationale, args.evidence_url)
-            if not all(required):
-                raise ValueError("decide requires --cve, --decision, --reviewed-by, --rationale and --evidence-url.")
             event = record_decision(
                 args.inbox, args.approvals, args.audit, args.cve, args.decision,
                 args.reviewed_by, args.rationale, args.evidence_url,
@@ -126,6 +138,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"Recorded {event['decision']} decision for {event['cve']}.")
             print(f"Audit record: {event['record_hash']}")
+            return 0
+        if args.command == "normalize-device":
+            print(json.dumps(normalize_device_identity(args.vendor, args.product), indent=2))
+            return 0
+        if args.command == "manufacturer-catalog":
+            print(json.dumps({"manufacturers": supported_manufacturers()}, indent=2))
             return 0
         if args.command == "assess":
             inventory = load_inventory(args.inventory)

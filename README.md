@@ -236,3 +236,26 @@ python -m camguard --help
 
 Website: https://trintechdigitaldefense.github.io  
 Phone: +1 (868) 362-0679
+
+
+## Manufacturer intelligence and normalization (Milestone 5.2)
+
+CamGuard includes a conservative, local alias catalogue for the initial CCTV manufacturer scope: Hikvision, Dahua, Axis Communications, Hanwha Vision, Uniview and Bosch Security Systems.
+
+Normalization uses exact aliases after case and punctuation normalization. Unknown manufacturer names are **not fuzzy-matched**. Generic product-family aliases such as "network video recorder" and "NVR" normalize to the same family label, while device model identifiers (for example, a camera model number) are preserved unchanged.
+
+The raw vendor and product values are retained in the normalization result so analysts can trace normalized labels back to the supplied evidence. Manufacturer recognition alone does not prove device identity, model applicability, firmware applicability or CVE exposure.
+
+Inspect the supported aliases:
+
+```bash
+python -m camguard manufacturer-catalog
+```
+
+Normalize a supplied device identity:
+
+```bash
+python -m camguard normalize-device --vendor "Hikvision Digital Technology Co., Ltd." --product "network video recorder"
+```
+
+The result is a local normalization aid only. It makes no network requests, probes no devices and does not modify inventory or advisory approvals.
