@@ -1,8 +1,10 @@
 """Maintained NVD + CISA KEV ingestion with analyst-gated publication."""
 from __future__ import annotations
 
+import http.client
 import json
 import re
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -16,6 +18,9 @@ NVD_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.I)
 PAGE_SIZE = 2000
+HTTP_TIMEOUT_SECONDS = 120.0
+HTTP_MAX_ATTEMPTS = 5
+HTTP_BACKOFF_SECONDS = 5.0
 MAX_WINDOW_DAYS = 120
 MAX_RESPONSE_BYTES = 50 * 1024 * 1024
 
@@ -31,12 +36,15 @@ def _utc(value: datetime) -> str:
 def _get_json(
     url: str,
     headers: dict[str, str],
-    timeout: float = 30.0,
+    timeout: float = HTTP_TIMEOUT_SECONDS,
     opener: Callable[..., Any] = urllib.request.urlopen,
 ) -> dict[str, Any]:
+    """Fetch and validate one bounded JSON response with transient-failure backoff."""
     request = urllib.request.Request(url, headers=headers, method="GET")
-    last_error = None
-    for attempt in range(4):
+    retryable_statuses = (429, 500, 502, 503, 504)
+    last_error: Exception | None = None
+
+    for attempt in range(HTTP_MAX_ATTEMPTS):
         try:
             with opener(request, timeout=timeout) as response:
                 status = getattr(response, "status", 200)
@@ -51,15 +59,36 @@ def _get_json(
             return payload
         except urllib.error.HTTPError as exc:
             last_error = exc
-            if exc.code not in (429, 500, 502, 503, 504) or attempt == 3:
-                raise AdvisoryIngestionError(f"Source HTTP error {exc.code}") from exc
-        except (urllib.error.URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            if exc.code not in retryable_statuses or attempt == HTTP_MAX_ATTEMPTS - 1:
+                raise AdvisoryIngestionError(f"Source HTTP error {exc.code} after {attempt + 1} attempt(s).") from exc
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            OSError,
+            http.client.HTTPException,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ) as exc:
             last_error = exc
-            if attempt == 3:
+            if attempt == HTTP_MAX_ATTEMPTS - 1:
                 raise AdvisoryIngestionError(
-                    f"Source retrieval/JSON validation failed: {type(exc).__name__}"
+                    f"Source retrieval/JSON validation failed after {attempt + 1} attempt(s): "
+                    f"{type(exc).__name__}"
                 ) from exc
-        time.sleep(min(2 ** attempt, 8))
+
+        # Exponential backoff capped at 30 seconds. Respect a numeric Retry-After
+        # header when the upstream service supplies one (for example, HTTP 429).
+        retry_after = None
+        if isinstance(last_error, urllib.error.HTTPError):
+            try:
+                retry_after = float(last_error.headers.get("Retry-After", ""))
+            except (AttributeError, TypeError, ValueError):
+                retry_after = None
+        delay = min(HTTP_BACKOFF_SECONDS * (2 ** attempt), 30.0)
+        if retry_after is not None and retry_after >= 0:
+            delay = min(max(delay, retry_after), 60.0)
+        time.sleep(delay)
+
     raise AdvisoryIngestionError("Source retrieval failed.") from last_error
 
 
@@ -186,6 +215,11 @@ def ingest_sources(
             "resultsPerPage": PAGE_SIZE,
             "startIndex": start_index,
         })
+        print(
+            f"CamGuard: requesting NVD page at startIndex={start_index}.",
+            file=sys.stderr,
+            flush=True,
+        )
         page = _get_json(f"{NVD_URL}?{params}", nvd_headers, opener=opener)
         page_items = page.get("vulnerabilities")
         if not isinstance(page_items, list):
@@ -223,11 +257,18 @@ def ingest_sources(
 
         total = int(page.get("totalResults", len(nvd_by_id)))
         start_index += len(page_items)
+        print(
+            f"CamGuard: NVD progress {min(start_index, total)}/{total} records "
+            f"({len(nvd_by_id)} unique valid CVE IDs collected).",
+            file=sys.stderr,
+            flush=True,
+        )
         if not page_items or start_index >= total:
             break
         # Conservative pacing: NVD's unauthenticated allowance is much lower.
         time.sleep(0.7 if api_key else 6.1)
 
+    print("CamGuard: downloading the CISA KEV snapshot.", file=sys.stderr, flush=True)
     kev = _get_json(KEV_URL, kev_headers, opener=opener)
     kev_items = kev.get("vulnerabilities")
     if (
