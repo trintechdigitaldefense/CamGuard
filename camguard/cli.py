@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 from datetime import datetime, timezone
 
+from . import __version__
 from .advisory_ingest import AdvisoryIngestionError, export_approved, ingest_sources
 from .intelligence import enrich_assets, load_advisories, load_inventory
 from .manufacturer_intel import normalize_device_identity, supported_manufacturers
@@ -165,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
                     advisories = load_advisories(str(approved_path))
 
             result = {
-                "tool": "TrinTech CamGuard", "version": "0.4.0",
+                "tool": "TrinTech CamGuard", "version": __version__,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "scope": {"cidr": "operator-supplied inventory", "addresses_considered": len(inventory), "authorization_attested": False},
                 "scan_type": "offline inventory enrichment and audit-verified advisory matching; no network probes",

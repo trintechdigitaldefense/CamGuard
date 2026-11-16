@@ -4,7 +4,7 @@
 
 CamGuard is an authorized, scope-limited network inventory and assessment tool from TrinTech Digital Defense.
 
-## Current capabilities (0.4.0)
+## Current capabilities (0.5.0rc1)
 
 - Bounded TCP reachability inventory for common camera/NVR ports on explicitly authorized RFC1918 IPv4 scopes.
 - Operator-supplied camera/NVR manufacturer, model, firmware and CPE inventory (JSON or CSV).
@@ -149,7 +149,7 @@ Each result records the request, timestamp, HTTP status, limited Server header, 
 
 The command requires `--authorized`, accepts at most 64 explicit IPs, and restricts targets to RFC1918 IPv4. The flag is an attestation, not a substitute for written client permission.
 
-## Maintained CVE advisory ingestion (0.4.0)
+## Maintained CVE advisory ingestion (0.5.0rc1)
 
 CamGuard ingests from two authoritative sources:
 - NVD CVE API 2.0: `https://services.nvd.nist.gov/rest/json/cves/2.0`
@@ -234,10 +234,14 @@ Rejected and pending decisions are never exported. Keep generated inboxes, appro
 2. Confirm the exact product/model and interpret the vendor's affected-version statement. Do not copy an NVD version range into an exact-version list without reviewing its meaning.
 3. Add a decision to `data/advisories/approvals.json`. The template is `data/advisories/approvals.example.json`. Use `decision: "approved"` only after review; otherwise leave it pending or mark it rejected.
 4. For approved records, provide an exact CPE, explicit affected firmware versions, CVSS base score, HTTPS source, summary, reviewer identifier and ISO-8601 review timestamp. Set `kev: true` only when the CVE appears in the current CISA catalogue.
-5. Validate and export:
+5. Validate and export using the current inbox and audit log:
 
 ```bash
-python -m camguard export-approved --approvals data/advisories/approvals.json --output data/advisories/approved-advisories.json
+python -m camguard export-approved \
+  --approvals data/advisories/approvals.json \
+  --inbox data/advisories/inbox/pending-review.json \
+  --audit data/advisories/review-audit.jsonl \
+  --output data/advisories/approved-advisories.json
 ```
 
 6. Have a second authorized reviewer inspect the approval change in GitHub before merging. Configure repository branch protection to require at least one independent review and passing status checks; do not allow self-approval for production advisory changes.

@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import camguard
+
 from camguard.advisory_review import record_decision
 from camguard.cli import main
 
@@ -48,6 +50,7 @@ class AssessApprovalBoundaryTests(unittest.TestCase):
             self.assertEqual(main(["assess", "--inventory", str(self.inventory), "--output-dir", str(self.output)]), 0)
         self.assertEqual(captured[0]["findings"], [])
         self.assertEqual(captured[0]["intelligence"]["advisories_loaded"], 0)
+        self.assertEqual(captured[0]["version"], camguard.__version__)
 
     def test_assess_rejects_partial_approval_inputs(self):
         with patch("camguard.cli._write_all") as writer:
