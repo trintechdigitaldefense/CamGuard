@@ -333,7 +333,12 @@ def export_reviewed_approvals(approvals_path: str | Path, inbox_path: str | Path
         event = latest.get(cve)
         if not event or event.get("decision") != "approved":
             raise ReviewError(f"{cve} has no latest approved decision in the audit log.")
-        if event.get("evidence_url") != evidence or event.get("reviewed_by") != row.get("reviewed_by"):
+        if (
+            event.get("evidence_url") != evidence
+            or event.get("reviewed_by") != row.get("reviewed_by")
+            or event.get("reviewed_at") != row.get("reviewed_at")
+            or event.get("rationale") != row.get("rationale")
+        ):
             raise ReviewError(f"{cve} approval does not match its latest audit event.")
         approved.append({
             "cve": cve, "cpe": row["cpe"],
