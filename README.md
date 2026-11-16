@@ -96,13 +96,42 @@ python -m camguard assess --inventory inventory.json --advisories advisories.jso
 
 The command does not perform network probes. Manufacturer/model/firmware details are included as supplied and labelled by verification status.
 
-## Risk scoring
+## Risk prioritization (Milestone 5.3)
 
-- CVE findings: CVSS base score × 10.
-- Reachable-service observations: conservative heuristic values (informational 10, low 30, medium 55).
-- Asset score: highest finding score for that asset; scores are not added together.
-- CVSS and heuristic scores are triage aids, not probability of compromise.
-- Internet exposure, business impact, compensating controls and environmental exploitability are not currently assessed.
+CamGuard produces a transparent per-finding score, a per-asset priority and a human-readable explanation. The score is a triage aid, **not** a probability of compromise.
+
+For an exact, verified device CPE and firmware match against an analyst-approved advisory:
+
+- CVSS component: CVSS base score × 10, rounded to an integer.
+- CISA KEV component: +10 points when the approved advisory is marked as present in the current CISA KEV catalogue.
+- Verified network exposure component: internet-exposed +15; internal segment +5; isolated +0; unknown +0.
+- Final score: sum of components, capped at 100.
+- Asset aggregation: highest-scoring finding; findings are not added together.
+
+Network exposure is optional operator-supplied context in the inventory record. Use `network_exposure` with one of `internet_exposed`, `internal_segment`, `isolated` or `unknown`; set `network_exposure_verified: true` only when supported by current client network evidence, and record `network_exposure_source`. CamGuard never infers internet exposure from a private-scope scan. Unverified or unknown exposure receives no uplift.
+
+Example inventory fields:
+
+```json
+{
+  "ip": "192.168.10.20",
+  "vendor": "Example Manufacturer",
+  "model": "Camera Model X",
+  "firmware": "1.2.3",
+  "cpe": "cpe:2.3:o:example:camera_model_x_firmware:1.2.3:*:*:*:*:*:*:*",
+  "source": "Technician verified device label and vendor export",
+  "verified": true,
+  "network_exposure": "internal_segment",
+  "network_exposure_verified": true,
+  "network_exposure_source": "Client firewall and VLAN review dated 2026-11-15"
+}
+```
+
+Evidence confidence is reported separately from severity: high requires exact verified identity/firmware and analyst-review provenance; medium indicates an exact match with incomplete provenance; network-only observations are low confidence as vulnerability evidence. A CVE without exact verified applicability is fail-closed and receives no device-level CVE/KEV/exposure score. Service reachability findings use conservative heuristics only and never receive CVE or KEV uplifts.
+
+Every finding and asset includes score components, confidence, and reasons in JSON. Markdown and PDF reports also show the explanation. A zero score means no scored finding was associated with the asset; it does **not** prove the asset is safe.
+
+The model does not currently score business criticality, compensating controls, exploitability in the client environment or active compromise.
 
 ## Reports
 

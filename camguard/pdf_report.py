@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from xml.sax.saxutils import escape
 from typing import Any
 
 from reportlab.lib import colors
@@ -78,7 +79,9 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
             title = f"{index}. {finding['cve']} — {str(finding.get('severity', 'info')).upper()}"
         body = [
             f"<b>Asset:</b> {finding.get('asset_ip', 'N/A')}",
-            f"<b>Risk score:</b> {finding.get('risk_score', 0)} / 100 ({finding.get('risk_basis', 'unscored')})",
+            f"<b>Risk score:</b> {finding.get('risk_score', 0)} / 100 — {finding.get('risk_rating', 'unscored')} (confidence: {finding.get('evidence_confidence', 'unknown')})",
+            f"<b>Score components:</b> {finding.get('risk_components', {})}",
+            f"<b>Why this score:</b> {escape('; '.join(finding.get('risk_explanation', [])))}",
             f"<b>Evidence:</b> {finding.get('evidence', finding.get('summary', 'Not supplied'))}",
             f"<b>Recommendation:</b> {finding.get('recommendation', 'Review vendor advisory and plan remediation.')}",
             f"<b>Source:</b> {finding.get('source', 'CamGuard observation')}",
