@@ -1,0 +1,132 @@
+name: Release artifact validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/release-artifact-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-install-verify:
+    runs-on: ubuntu-latest
+    env:
+      CAMGUARD_SOURCE_SHA: e288d2ec78aca46de57243b5dcc9a4eb614f7025
+    steps:
+      - name: Check out exact merged release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CAMGUARD_SOURCE_SHA }}
+
+      - name: Verify source revision and build wheel
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          test "$ACTUAL_SHA" = "$CAMGUARD_SOURCE_SHA"
+          python -m pip install --upgrade build
+          python -m pip wheel . --no-deps --wheel-dir /tmp/camguard-wheel
+
+      - name: Inspect wheel contents and version
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from email.parser import Parser
+
+          wheels = list(Path("/tmp/camguard-wheel").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one wheel; found {len(wheels)}")
+          wheel = wheels[0]
+          with ZipFile(wheel) as archive:
+              names = archive.namelist()
+              metadata_name = next(
+                  (n for n in names if n.endswith(".dist-info/METADATA")), None
+              )
+              if metadata_name is None:
+                  raise SystemExit("Wheel has no METADATA file")
+              metadata = Parser().parsestr(archive.read(metadata_name).decode("utf-8"))
+          if metadata.get("Version") != "0.5.0rc1":
+              raise SystemExit(f"Unexpected package version: {metadata.get('Version')}")
+          forbidden_exact = (
+              "data/advisories/approvals.json",
+              "data/advisories/approved-advisories.json",
+              "data/advisories/review-audit.jsonl",
+          )
+          forbidden_fragments = (
+              "data/advisories/inbox/",
+              "approvals.json",
+              "approved-advisories.json",
+              "review-audit.jsonl",
+              "client-inventory",
+              "customer-inventory",
+          )
+          leaked = [n for n in names if any(x in n for x in forbidden_fragments)]
+          if leaked:
+              raise SystemExit("Sensitive or client data paths found in wheel: " + ", ".join(leaked))
+          if not any(n.startswith("camguard/") for n in names):
+              raise SystemExit("Wheel does not contain the camguard package")
+          print(f"Wheel: {wheel.name}")
+          print(f"Version: {metadata.get('Version')}")
+          print("Sensitive advisory/client-data path check: PASS")
+          PY
+
+      - name: Install wheel in clean virtual environment outside checkout
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/camguard-release-venv
+          cd /tmp
+          /tmp/camguard-release-venv/bin/python -m pip install --upgrade pip
+          /tmp/camguard-release-venv/bin/python -m pip install /tmp/camguard-wheel/*.whl
+          /tmp/camguard-release-venv/bin/python - <<'PY'
+          import camguard
+          from importlib.metadata import version
+          from pathlib import Path
+          import sys
+
+          module_path = Path(camguard.__file__).resolve()
+          venv = Path(sys.prefix).resolve()
+          if venv not in module_path.parents:
+              raise SystemExit(f"camguard imported outside clean venv: {module_path}")
+          if version("trintech-camguard") != "0.5.0rc1":
+              raise SystemExit("Installed distribution version mismatch")
+          print(f"Installed version: {version('trintech-camguard')}")
+          print(f"Imported module: {module_path}")
+          print(f"Virtual environment: {venv}")
+          PY
+          camguard --help >/tmp/camguard-help.txt
+          camguard assess --help >/tmp/camguard-assess-help.txt
+          camguard review-advisories --help >/tmp/camguard-review-help.txt
+          echo "camguard --help: PASS"
+          echo "camguard assess --help: PASS"
+          echo "camguard review-advisories --help: PASS"
+
+      - name: Record SHA-256 and validation results
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/camguard-validation
+          cp /tmp/camguard-wheel/*.whl /tmp/camguard-validation/
+          cd /tmp/camguard-validation
+          sha256sum ./*.whl | tee SHA256SUMS.txt
+          {
+            echo "Source commit: $CAMGUARD_SOURCE_SHA"
+            echo "Package version: 0.5.0rc1"
+            echo "Clean virtual environment installation: PASS"
+            echo "camguard --help: PASS"
+            echo "camguard assess --help: PASS"
+            echo "camguard review-advisories --help: PASS"
+            echo "Wheel sensitive advisory/client-data check: PASS"
+            echo "Built wheel SHA-256:"
+            cat SHA256SUMS.txt
+          } | tee VALIDATION.txt
+
+      - name: Upload wheel and validation record
+        uses: actions/upload-artifact@v4
+        with:
+          name: camguard-0.5.0rc1-release-validation
+          path: /tmp/camguard-validation/
+          if-no-files-found: error
+          retention-days: 30
