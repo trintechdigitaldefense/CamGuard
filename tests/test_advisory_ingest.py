@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from camguard.advisory_ingest import (
-    AdvisoryIngestionError, _configurations, _cvss, _valid_cpe23, export_approved, ingest_sources,
+    AdvisoryIngestionError, _configurations, _cvss, _get_json, _valid_cpe23,
+    export_approved, ingest_sources,
 )
 
 
@@ -19,6 +20,39 @@ class FakeResponse:
 
 
 class AdvisoryIngestionTests(unittest.TestCase):
+    def test_get_json_retries_transient_503_and_uses_long_timeout(self):
+        import urllib.error
+        from unittest.mock import patch
+
+        calls = []
+        def opener(request, timeout=0):
+            calls.append(timeout)
+            if len(calls) == 1:
+                raise urllib.error.HTTPError(request.full_url, 503, "Unavailable", {}, None)
+            return FakeResponse({"ok": True})
+
+        with patch("camguard.advisory_ingest.time.sleep"):
+            payload = _get_json("https://example.test/feed", {}, opener=opener)
+
+        self.assertEqual(payload, {"ok": True})
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls, [120.0, 120.0])
+
+    def test_get_json_fails_after_retry_budget_for_persistent_503(self):
+        import urllib.error
+        from unittest.mock import patch
+
+        calls = []
+        def opener(request, timeout=0):
+            calls.append(timeout)
+            raise urllib.error.HTTPError(request.full_url, 503, "Unavailable", {}, None)
+
+        with patch("camguard.advisory_ingest.time.sleep"):
+            with self.assertRaisesRegex(AdvisoryIngestionError, "503 after 5 attempt"):
+                _get_json("https://example.test/feed", {}, opener=opener)
+
+        self.assertEqual(len(calls), 5)
+
     def test_cpe23_validation_checks_component_count_and_part(self):
         self.assertTrue(_valid_cpe23("cpe:2.3:o:vendor:camera:1.0:*:*:*:*:*:*:*"))
         self.assertFalse(_valid_cpe23("cpe:2.3:o:vendor:camera"))
