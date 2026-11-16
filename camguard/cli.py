@@ -107,7 +107,8 @@ def main(argv: list[str] | None = None) -> int:
             import json
             if args.action == "list":
                 rows = list_pending(args.inbox, query=args.query, kev_only=args.kev_only,
-                                    limit=args.limit, offset=args.offset)
+                                    limit=args.limit, offset=args.offset,
+                                    approvals_path=args.approvals)
                 print(json.dumps({"count": len(rows), "offset": args.offset, "items": rows}, indent=2))
                 return 0
             if args.action == "verify-audit":
