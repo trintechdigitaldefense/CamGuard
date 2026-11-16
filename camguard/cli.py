@@ -104,7 +104,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Assessment complete: {len(result['assets'])} responsive assets, {len(result['findings'])} findings.")
             return 0
         if args.command == "metadata":
-            from pathlib import Path
             targets = [line.strip() for line in Path(args.targets).read_text(encoding="utf-8").splitlines() if line.strip() and not line.lstrip().startswith("#")]
             result = collect_metadata(targets, args.authorized, timeout=args.timeout)
             Path(args.output).write_text(json.dumps(result, indent=2), encoding="utf-8")
