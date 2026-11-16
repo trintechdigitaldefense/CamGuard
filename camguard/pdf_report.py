@@ -30,6 +30,7 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
     styles.add(ParagraphStyle(name="Section", parent=styles["Heading2"], textColor=NAVY, fontSize=14, leading=18, spaceBefore=12, spaceAfter=7))
     styles.add(ParagraphStyle(name="Small", parent=styles["BodyText"], fontSize=8, leading=11))
     styles.add(ParagraphStyle(name="Tiny", parent=styles["BodyText"], fontSize=7, leading=9, textColor=colors.HexColor("#526273")))
+    safe = lambda value: escape(str(value))
     story = [
         Paragraph("TRINTECH DIGITAL DEFENSE", styles["BrandSub"]),
         Paragraph("CamGuard Security Assessment", styles["BrandTitle"]),
@@ -89,13 +90,21 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
         story.append(KeepTogether([Paragraph(title, styles["Heading4"]), Paragraph("<br/>".join(body), styles["Small"]), Spacer(1, 5)]))
     story.append(Paragraph("Scoring methodology and limitations", styles["Section"]))
     method = result.get("risk_methodology", {})
-    story.append(Paragraph(
-        (method.get("aggregation", "Risk scores are triage aids.") + " " +
-         method.get("cvss", "") + " " + method.get("heuristics", "")),
-        styles["Small"],
-    ))
+    methodology = [
+        "<b>Formula:</b> " + safe(method.get("formula", "Risk scores are triage aids.")),
+        "<b>Aggregation:</b> " + safe(method.get("aggregation", "Highest-scoring finding per asset.")),
+        "<b>KEV uplift:</b> " + safe(method.get("kev_uplift", "Not specified.")),
+        "<b>Exposure uplifts:</b> " + safe(method.get("exposure_uplifts", {})),
+        "<b>Exposure policy:</b> " + safe(method.get("exposure_policy", "Unverified exposure is not scored.")),
+        "<b>Service findings:</b> " + safe(method.get("service_findings", "Not specified.")),
+        "<b>Evidence confidence:</b> " + safe(method.get("confidence", "Reported separately from score.")),
+        "<b>Rating bands:</b> " + safe(method.get("ratings", {})),
+    ]
+    story.append(Paragraph("<br/>".join(methodology), styles["Small"]))
+    for limitation in method.get("limitations", []):
+        story.append(Paragraph("• " + safe(limitation), styles["Tiny"]))
     for limitation in result.get("limitations", []):
-        story.append(Paragraph("• " + limitation, styles["Tiny"]))
+        story.append(Paragraph("• " + safe(limitation), styles["Tiny"]))
     story.append(Spacer(1, 10))
     story.append(Paragraph(
         "CONFIDENTIAL CLIENT REPORT — Prepared by TrinTech Digital Defense. "
