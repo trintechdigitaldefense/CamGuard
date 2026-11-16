@@ -97,6 +97,23 @@ class AdvisoryReviewTests(unittest.TestCase):
         with self.assertRaisesRegex(ReviewError, "integrity check failed"):
             verify_audit(self.audit)
 
+    def test_kev_only_requires_and_accepts_analyst_sourced_cvss(self):
+        with self.assertRaisesRegex(ReviewError, "analyst-sourced CVSS"):
+            record_decision(
+                self.inbox, self.approvals, self.audit, "CVE-2026-5678",
+                "approved", "analyst-1", "Vendor advisory confirms exact product.",
+                "https://vendor.example/security/CVE-2026-5678",
+                "cpe:2.3:o:vendor:nvr:4.5.6:*:*:*:*:*:*:*", ["4.5.6"],
+            )
+        record_decision(
+            self.inbox, self.approvals, self.audit, "CVE-2026-5678",
+            "approved", "analyst-1", "Vendor advisory confirms exact product and score.",
+            "https://vendor.example/security/CVE-2026-5678",
+            "cpe:2.3:o:vendor:nvr:4.5.6:*:*:*:*:*:*:*", ["4.5.6"], cvss_score=7.4,
+        )
+        self.assertEqual(export_reviewed_approvals(self.approvals, self.inbox, self.output), 1)
+        self.assertEqual(json.loads(self.output.read_text())["advisories"][0]["cvss_base_score"], 7.4)
+
     def test_rejected_record_is_not_exported(self):
         record_decision(
             self.inbox, self.approvals, self.audit, "CVE-2026-1234",
