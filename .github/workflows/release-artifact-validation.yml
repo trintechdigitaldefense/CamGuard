@@ -19,7 +19,7 @@ jobs:
       - name: Check out exact merged release commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.CAMGUARD_SOURCE_SHA }}
+          ref: e288d2ec78aca46de57243b5dcc9a4eb614f7025
 
       - name: Verify source revision and build wheel
         run: |
@@ -97,9 +97,9 @@ jobs:
           print(f"Imported module: {module_path}")
           print(f"Virtual environment: {venv}")
           PY
-          camguard --help >/tmp/camguard-help.txt
-          camguard assess --help >/tmp/camguard-assess-help.txt
-          camguard review-advisories --help >/tmp/camguard-review-help.txt
+          /tmp/camguard-release-venv/bin/camguard --help >/tmp/camguard-help.txt
+          /tmp/camguard-release-venv/bin/camguard assess --help >/tmp/camguard-assess-help.txt
+          /tmp/camguard-release-venv/bin/camguard review-advisories --help >/tmp/camguard-review-help.txt
           echo "camguard --help: PASS"
           echo "camguard assess --help: PASS"
           echo "camguard review-advisories --help: PASS"
