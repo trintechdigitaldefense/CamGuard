@@ -69,32 +69,26 @@ Create an inventory JSON file. Manufacturer, model, firmware and CPE must be sou
 }
 ```
 
-Create a local advisory JSON file:
+Assessment no longer accepts an arbitrary advisory JSON file. CVE matching is enabled only when CamGuard validates analyst decisions against the current pending inbox and the hash-chained review audit.
 
-```json
-{
-  "advisories": [
-    {
-      "cve": "CVE-2024-12345",
-      "cpe": "cpe:2.3:o:example:camera_model_x_firmware:1.2.3:*:*:*:*:*:*:*",
-      "affected_versions": ["1.2.3"],
-      "cvss_base_score": 8.1,
-      "source": "https://vendor.example/security-advisory",
-      "summary": "Replace with the advisory publisher's verified summary."
-    }
-  ]
-}
-```
-
-The example CVE and vendor data above are placeholders, **not a real vulnerability claim**. Replace them with validated advisory records before client use. Version matching is exact by design; ranges, aliases and vendor-specific version semantics require analyst review and are not guessed.
-
-Run offline enrichment:
+Run offline enrichment without CVE advisories:
 
 ```bash
-python -m camguard assess --inventory inventory.json --advisories advisories.json --output-dir reports
+python -m camguard assess --inventory inventory.json --output-dir reports
 ```
 
-The command does not perform network probes. Manufacturer/model/firmware details are included as supplied and labelled by verification status.
+When you have completed analyst review, provide all three approval records:
+
+```bash
+python -m camguard assess \
+  --inventory inventory.json \
+  --approvals data/advisories/approvals.json \
+  --inbox data/advisories/inbox/pending-review.json \
+  --audit data/advisories/review-audit.jsonl \
+  --output-dir reports
+```
+
+CamGuard verifies the audit chain and revalidates each approved record against the current inbox before matching. It creates the validated advisory dataset in a temporary directory and removes it after loading. Supplying only one or two approval inputs is rejected. The assessment performs no external API calls or network probes. Manufacturer/model/firmware details are included as supplied and labelled by verification status.
 
 ## Risk prioritization (Milestone 5.3)
 
