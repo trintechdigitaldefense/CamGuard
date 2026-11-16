@@ -46,6 +46,16 @@ class AdvisoryReviewTests(unittest.TestCase):
         self.assertEqual([row["cve"] for row in rows], ["CVE-2026-1234"])
         self.assertEqual(len(list_pending(self.inbox, kev_only=True)), 1)
 
+    def test_decided_items_disappear_from_pending_queue(self):
+        record_decision(
+            self.inbox, self.approvals, self.audit, "CVE-2026-1234",
+            "rejected", "analyst-1", "Not affected.",
+            "https://vendor.example/security/CVE-2026-1234",
+        )
+        self.assertEqual(list_pending(self.inbox, approvals_path=self.approvals), [
+            row for row in list_pending(self.inbox) if row["cve"] == "CVE-2026-5678"
+        ])
+
     def test_approval_requires_source_candidate_and_audit(self):
         with self.assertRaisesRegex(ReviewError, "not present"):
             record_decision(
