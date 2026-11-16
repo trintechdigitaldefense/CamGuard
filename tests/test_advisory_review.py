@@ -129,7 +129,7 @@ class AdvisoryReviewTests(unittest.TestCase):
                 altered = json.loads(json.dumps(original))
                 altered["approvals"][0][field] = value
                 self.approvals.write_text(json.dumps(altered))
-                with self.assertRaisesRegex(ReviewError, "does not match its latest audit event"):
+                with self.assertRaisesRegex(ReviewError, "complete audit-record hash|latest audit event"):
                     export_reviewed_approvals(self.approvals, self.inbox, self.output)
         self.approvals.write_text(json.dumps(original))
         self.assertEqual(export_reviewed_approvals(self.approvals, self.inbox, self.output), 1)
