@@ -1,9 +1,9 @@
 name: Tests
 on:
   push:
-    branches: [main]
+    branches: [main, feature/risk-prioritization-hardening-v1]
   pull_request:
-    branches: [main]
+    branches: [main, feature/risk-prioritization-v1]
 permissions:
   contents: read
 jobs:
