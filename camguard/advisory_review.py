@@ -233,6 +233,18 @@ def record_decision(
         "reviewed_at": reviewed_at, "rationale": rationale,
     }
 
+    approvals_file = Path(approvals_path)
+    if approvals_file.exists():
+        try:
+            payload = json.loads(approvals_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ReviewError("Existing approvals file is invalid JSON; refusing to overwrite it.") from exc
+        rows = payload.get("approvals") if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            raise ReviewError("Existing approvals file must contain an approvals array.")
+    else:
+        rows = []
+
     audit_file = Path(audit_path)
     audit_file.parent.mkdir(parents=True, exist_ok=True)
     entries, previous_hash = _read_audit(audit_file)
@@ -250,17 +262,6 @@ def record_decision(
         handle.flush()
         os.fsync(handle.fileno())
 
-    approvals_file = Path(approvals_path)
-    if approvals_file.exists():
-        try:
-            payload = json.loads(approvals_file.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise ReviewError("Existing approvals file is invalid JSON; refusing to overwrite it.") from exc
-        rows = payload.get("approvals") if isinstance(payload, dict) else None
-        if not isinstance(rows, list):
-            raise ReviewError("Existing approvals file must contain an approvals array.")
-    else:
-        rows = []
     rows = [row for row in rows if not (isinstance(row, dict) and str(row.get("cve", "")).upper() == cve)]
     rows.append(approval)
     _atomic_json(approvals_file, {"approvals": sorted(rows, key=lambda row: row["cve"])})
