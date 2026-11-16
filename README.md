@@ -151,6 +151,58 @@ CISA KEV entries outside the NVD modified window are retained separately in the 
 
 The scheduled GitHub Actions workflow runs daily at 07:17 UTC and can also be started manually. It opens or updates a pull request containing pending feed data. It does not commit directly to `main`, publish approved advisories, or change client assessment results.
 
+#### Local analyst review CLI
+
+Review data stays on the operator's machine by default. List a page of pending candidates, search by CVE/vendor/product/description, or focus on KEV-only entries:
+
+```bash
+python -m camguard review-advisories list --limit 50
+python -m camguard review-advisories list --query "Hikvision" --limit 25
+python -m camguard review-advisories list --kev-only --limit 50
+```
+
+Record a rejection or return an item to pending with a reviewer identity, HTTPS evidence URL and rationale:
+
+```bash
+python -m camguard review-advisories decide \
+  --cve CVE-2026-12345 --decision rejected \
+  --reviewed-by "analyst-id" \
+  --evidence-url "https://vendor.example/security/advisory" \
+  --rationale "Vendor advisory does not list this camera model."
+```
+
+Approve only after confirming the exact product and firmware against the vendor advisory. Supply the exact CPE and repeat `--affected-version` for each explicitly affected firmware version:
+
+```bash
+python -m camguard review-advisories decide \
+  --cve CVE-2026-12345 --decision approved \
+  --reviewed-by "analyst-id" \
+  --evidence-url "https://vendor.example/security/advisory" \
+  --rationale "Vendor bulletin confirms this exact model and firmware." \
+  --cpe "cpe:2.3:o:vendor:camera:1.2.3:*:*:*:*:*:*:*" \
+  --affected-version "1.2.3"
+```
+
+Every decision is appended to `data/advisories/review-audit.jsonl`, a SHA-256 hash-chained log. Verify its integrity before export:
+
+```bash
+python -m camguard review-advisories verify-audit
+```
+
+The log is tamper-evident, not an immutable external archive; protect and back it up with the approvals file. Decisions are checked against the current pending inbox. For NVD candidates, the approved CPE must satisfy the source CPE applicability (all non-version source attributes must match; source wildcards may be resolved by the analyst). The approved CPE must contain a concrete version, and affected firmware versions cannot be wildcards. KEV-only entries have no NVD CPE applicability and therefore rely on independent vendor evidence; supply `--cvss-score` only when the score is documented by the cited source. NVD candidates must retain the NVD CVSS score.
+
+Export requires the matching inbox and audit log:
+
+```bash
+python -m camguard export-approved \
+  --approvals data/advisories/approvals.json \
+  --inbox data/advisories/inbox/pending-review.json \
+  --audit data/advisories/review-audit.jsonl \
+  --output data/advisories/approved-advisories.json
+```
+
+The exporter rejects approvals absent from the inbox, mismatched CPE applicability, altered CVSS scores, missing rationale/reviewer metadata, or decisions without a matching latest approved audit event. Rejected and pending decisions are never exported. Keep generated inboxes, approvals, audit logs and client-specific review data out of public commits unless a deliberate, access-controlled review process requires them.
+
 1. Analyst opens each candidate's NVD record and original vendor advisory.
 2. Confirm the exact product/model and interpret the vendor's affected-version statement. Do not copy an NVD version range into an exact-version list without reviewing its meaning.
 3. Add a decision to `data/advisories/approvals.json`. The template is `data/advisories/approvals.example.json`. Use `decision: "approved"` only after review; otherwise leave it pending or mark it rejected.

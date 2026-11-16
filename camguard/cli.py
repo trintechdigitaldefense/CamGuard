@@ -37,6 +37,26 @@ def build_parser() -> argparse.ArgumentParser:
     approve = sub.add_parser("export-approved", help="Validate analyst decisions and export only explicitly approved advisories.")
     approve.add_argument("--approvals", required=True, help="Analyst-maintained approvals JSON file.")
     approve.add_argument("--output", default="data/advisories/approved-advisories.json", help="Approved advisory output path.")
+    approve.add_argument("--inbox", required=True, help="Pending inbox used to verify each approved CVE.")
+    approve.add_argument("--audit", default="data/advisories/review-audit.jsonl", help="Hash-chained analyst review audit log.")
+
+    review = sub.add_parser("review-advisories", help="Search pending advisories, record analyst decisions and verify the audit log.")
+    review.add_argument("action", choices=("list", "decide", "verify-audit"))
+    review.add_argument("--inbox", default="data/advisories/inbox/pending-review.json")
+    review.add_argument("--approvals", default="data/advisories/approvals.json")
+    review.add_argument("--audit", default="data/advisories/review-audit.jsonl")
+    review.add_argument("--query", default="", help="Search CVE, vendor, product or description.")
+    review.add_argument("--limit", type=int, default=50)
+    review.add_argument("--offset", type=int, default=0)
+    review.add_argument("--kev-only", action="store_true")
+    review.add_argument("--cve", help="CVE identifier for a decision.")
+    review.add_argument("--decision", choices=("approved", "rejected", "pending"))
+    review.add_argument("--reviewed-by", help="Analyst identifier.")
+    review.add_argument("--rationale", help="Reason for the decision.")
+    review.add_argument("--evidence-url", help="HTTPS vendor advisory/evidence URL.")
+    review.add_argument("--cpe", help="Exact CPE 2.3 for an approval.")
+    review.add_argument("--cvss-score", type=float, help="Analyst-sourced CVSS score required for KEV-only candidates.")
+    review.add_argument("--affected-version", action="append", default=[], help="Explicit affected firmware version; repeat as needed.")
 
     assess = sub.add_parser("assess", help="Enrich an operator-supplied verified camera inventory and match a local CVE advisory file.")
     assess.add_argument("--inventory", required=True, help="JSON or CSV inventory supplied from approved client records.")
@@ -79,8 +99,33 @@ def main(argv: list[str] | None = None) -> int:
             print("Downloaded records are pending review only; no CVE matches were approved.")
             return 0
         if args.command == "export-approved":
-            count = export_approved(args.approvals, args.output)
-            print(f"Exported {count} analyst-approved advisories: {args.output}")
+            from .advisory_review import export_reviewed_approvals
+            count = export_reviewed_approvals(args.approvals, args.inbox, args.output, args.audit)
+            print(f"Exported {count} inbox-verified analyst-approved advisories: {args.output}")
+            return 0
+        if args.command == "review-advisories":
+            from .advisory_review import list_pending, record_decision, verify_audit
+            import json
+            if args.action == "list":
+                rows = list_pending(args.inbox, query=args.query, kev_only=args.kev_only,
+                                    limit=args.limit, offset=args.offset,
+                                    approvals_path=args.approvals)
+                print(json.dumps({"count": len(rows), "offset": args.offset, "items": rows}, indent=2))
+                return 0
+            if args.action == "verify-audit":
+                print(json.dumps(verify_audit(args.audit), indent=2))
+                return 0
+            required = (args.cve, args.decision, args.reviewed_by, args.rationale, args.evidence_url)
+            if not all(required):
+                raise ValueError("decide requires --cve, --decision, --reviewed-by, --rationale and --evidence-url.")
+            event = record_decision(
+                args.inbox, args.approvals, args.audit, args.cve, args.decision,
+                args.reviewed_by, args.rationale, args.evidence_url,
+                cpe=args.cpe or "", affected_versions=args.affected_version,
+                cvss_score=args.cvss_score,
+            )
+            print(f"Recorded {event['decision']} decision for {event['cve']}.")
+            print(f"Audit record: {event['record_hash']}")
             return 0
         if args.command == "assess":
             inventory = load_inventory(args.inventory)
