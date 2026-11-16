@@ -258,3 +258,75 @@ def record_decision(
 def verify_audit(path: str | Path) -> dict[str, Any]:
     entries, last_hash = _read_audit(Path(path))
     return {"valid": True, "entries": len(entries), "last_hash": last_hash}
+
+
+def export_reviewed_approvals(approvals_path: str | Path, inbox_path: str | Path,
+                              output_path: str | Path) -> int:
+    """Export only approved records present in the inbox and backed by the audit chain."""
+    from .advisory_ingest import _atomic_json
+
+    inbox = load_inbox(inbox_path)
+    candidates = _candidate_map(inbox)
+    approvals_payload = json.loads(Path(approvals_path).read_text(encoding="utf-8"))
+    rows = approvals_payload.get("approvals") if isinstance(approvals_payload, dict) else None
+    if not isinstance(rows, list):
+        raise ReviewError("Approvals file must contain an approvals array.")
+    audit_path = Path(approvals_path).with_name("review-audit.jsonl")
+    # The caller may store the audit elsewhere; require the canonical sibling audit
+    # file so the CLI export cannot silently bypass decision provenance.
+    audit_entries, _ = _read_audit(audit_path)
+    latest: dict[str, dict[str, Any]] = {}
+    for event in audit_entries:
+        latest[event["cve"]] = event
+
+    approved = []
+    seen = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ReviewError("Every approval row must be an object.")
+        if row.get("decision") != "approved":
+            continue
+        cve = str(row.get("cve", "")).upper()
+        candidate = candidates.get(cve)
+        if candidate is None:
+            raise ReviewError(f"{cve} is not present in the current pending inbox.")
+        if cve in seen:
+            raise ReviewError(f"Duplicate approval for {cve}.")
+        if not _cpe_matches_source(str(row.get("cpe", "")), candidate):
+            raise ReviewError(f"{cve} approval CPE does not match pending source applicability.")
+        versions = row.get("affected_versions")
+        if not isinstance(versions, list) or not versions or any(
+            not isinstance(version, str) or not version.strip() or version.strip() in {"*", "-"}
+            for version in versions
+        ):
+            raise ReviewError(f"{cve} requires explicit affected firmware versions.")
+        if not row.get("reviewed_by") or not row.get("reviewed_at") or not row.get("rationale"):
+            raise ReviewError(f"{cve} is missing reviewer, timestamp or rationale.")
+        evidence = str(row.get("source", ""))
+        parsed = urlsplit(evidence)
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise ReviewError(f"{cve} requires an HTTPS vendor evidence source.")
+        score = candidate.get("cvss_base_score")
+        if score is None or row.get("cvss_base_score") != score:
+            raise ReviewError(f"{cve} CVSS score must match the NVD source record.")
+        event = latest.get(cve)
+        if not event or event.get("decision") != "approved":
+            raise ReviewError(f"{cve} has no latest approved decision in the audit log.")
+        if event.get("evidence_url") != evidence or event.get("reviewed_by") != row.get("reviewed_by"):
+            raise ReviewError(f"{cve} approval does not match its latest audit event.")
+        approved.append({
+            "cve": cve, "cpe": row["cpe"],
+            "affected_versions": sorted(set(versions)),
+            "cvss_base_score": float(score), "source": evidence,
+            "summary": str(row.get("summary", "")),
+            "kev": bool(candidate.get("cisa_kev")),
+            "reviewed_by": row["reviewed_by"], "reviewed_at": row["reviewed_at"],
+        })
+        seen.add(cve)
+
+    _atomic_json(Path(output_path), {
+        "advisories": approved,
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        "publication_policy": "Only inbox-present, audit-verified analyst-approved exact CPE and version entries.",
+    })
+    return len(approved)
