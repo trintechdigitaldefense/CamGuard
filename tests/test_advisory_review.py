@@ -114,6 +114,25 @@ class AdvisoryReviewTests(unittest.TestCase):
         self.assertEqual(export_reviewed_approvals(self.approvals, self.inbox, self.output), 1)
         self.assertEqual(json.loads(self.output.read_text())["advisories"][0]["cvss_base_score"], 7.4)
 
+    def test_export_rejects_modified_audit_provenance_fields(self):
+        record_decision(
+            self.inbox, self.approvals, self.audit, "CVE-2026-1234",
+            "approved", "analyst-1", "Confirmed exact model and firmware.",
+            "https://vendor.example/security/CVE-2026-1234",
+            "cpe:2.3:o:vendor:camera:1.2.3:*:*:*:*:*:*:*", ["1.2.3"],
+        )
+        original = json.loads(self.approvals.read_text())
+        for field, value in (("reviewed_by", "forged-analyst"),
+                             ("reviewed_at", "2026-01-01T00:00:00Z"),
+                             ("rationale", "altered rationale")):
+            with self.subTest(field=field):
+                altered = json.loads(json.dumps(original))
+                altered["approvals"][0][field] = value
+                self.approvals.write_text(json.dumps(altered))
+                with self.assertRaisesRegex(ReviewError, "does not match its latest audit event"):
+                    export_reviewed_approvals(self.approvals, self.inbox, self.output)
+        self.approvals.write_text(json.dumps(original))
+        self.assertEqual(export_reviewed_approvals(self.approvals, self.inbox, self.output), 1)
     def test_rejected_record_is_not_exported(self):
         record_decision(
             self.inbox, self.approvals, self.audit, "CVE-2026-1234",
