@@ -114,6 +114,74 @@ class AdvisoryReviewTests(unittest.TestCase):
         self.assertEqual(export_reviewed_approvals(self.approvals, self.inbox, self.output), 1)
         self.assertEqual(json.loads(self.output.read_text())["advisories"][0]["cvss_base_score"], 7.4)
 
+    def test_export_rejects_modified_audit_provenance_fields(self):
+        record_decision(
+            self.inbox, self.approvals, self.audit, "CVE-2026-1234",
+            "approved", "analyst-1", "Confirmed exact model and firmware.",
+            "https://vendor.example/security/CVE-2026-1234",
+            "cpe:2.3:o:vendor:camera:1.2.3:*:*:*:*:*:*:*", ["1.2.3"],
+        )
+        original = json.loads(self.approvals.read_text())
+        for field, value in (("reviewed_by", "forged-analyst"),
+                             ("reviewed_at", "2026-01-01T00:00:00Z"),
+                             ("rationale", "altered rationale")):
+            with self.subTest(field=field):
+                altered = json.loads(json.dumps(original))
+                altered["approvals"][0][field] = value
+                self.approvals.write_text(json.dumps(altered))
+                with self.assertRaisesRegex(ReviewError, "complete audit-record hash|latest audit event"):
+                    export_reviewed_approvals(self.approvals, self.inbox, self.output)
+        self.approvals.write_text(json.dumps(original))
+        self.assertEqual(export_reviewed_approvals(self.approvals, self.inbox, self.output), 1)
+    def test_non_vulnerable_nvd_criteria_cannot_be_approved(self):
+        inbox = json.loads(self.inbox.read_text())
+        inbox["candidates"][0]["cpe_applicability"][0]["vulnerable"] = False
+        self.inbox.write_text(json.dumps(inbox))
+        with self.assertRaisesRegex(ReviewError, "does not match"):
+            record_decision(
+                self.inbox, self.approvals, self.audit, "CVE-2026-1234",
+                "approved", "analyst-1", "Reviewed vendor bulletin",
+                "https://vendor.example/security/CVE-2026-1234",
+                "cpe:2.3:o:vendor:camera:1.2.3:*:*:*:*:*:*:*", ["1.2.3"],
+            )
+
+    def test_complete_approval_record_is_bound_to_audit_hash(self):
+        record_decision(
+            self.inbox, self.approvals, self.audit, "CVE-2026-1234",
+            "approved", "analyst-1", "Confirmed exact model and firmware.",
+            "https://vendor.example/security/CVE-2026-1234",
+            "cpe:2.3:o:vendor:camera:1.2.3:*:*:*:*:*:*:*", ["1.2.3"],
+        )
+        original = json.loads(self.approvals.read_text())
+        event = json.loads(self.audit.read_text().splitlines()[-1])
+        self.assertEqual(len(event["approval_sha256"]), 64)
+        mutations = (
+            ("cpe", "cpe:2.3:o:vendor:camera:9.9.9:*:*:*:*:*:*:*"),
+            ("affected_versions", ["9.9.9"]),
+        )
+        for field, value in mutations:
+            with self.subTest(field=field):
+                altered = json.loads(json.dumps(original))
+                altered["approvals"][0][field] = value
+                self.approvals.write_text(json.dumps(altered))
+                with self.assertRaisesRegex(ReviewError, "complete audit-record hash"):
+                    export_reviewed_approvals(self.approvals, self.inbox, self.output)
+        self.approvals.write_text(json.dumps(original))
+        self.assertEqual(export_reviewed_approvals(self.approvals, self.inbox, self.output), 1)
+
+    def test_kev_only_analyst_cvss_is_bound_to_audit_hash(self):
+        record_decision(
+            self.inbox, self.approvals, self.audit, "CVE-2026-5678",
+            "approved", "analyst-1", "Vendor advisory confirms exact product and score.",
+            "https://vendor.example/security/CVE-2026-5678",
+            "cpe:2.3:o:vendor:nvr:4.5.6:*:*:*:*:*:*:*", ["4.5.6"], cvss_score=7.4,
+        )
+        altered = json.loads(self.approvals.read_text())
+        altered["approvals"][0]["cvss_base_score"] = 7.5
+        self.approvals.write_text(json.dumps(altered))
+        with self.assertRaisesRegex(ReviewError, "complete audit-record hash"):
+            export_reviewed_approvals(self.approvals, self.inbox, self.output)
+
     def test_rejected_record_is_not_exported(self):
         record_decision(
             self.inbox, self.approvals, self.audit, "CVE-2026-1234",

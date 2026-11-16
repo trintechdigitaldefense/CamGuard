@@ -128,6 +128,11 @@ def _cpe_matches_source(approved_cpe: str, candidate: dict[str, Any]) -> bool:
         # KEV-only items have no NVD CPE; independent vendor evidence is mandatory.
         return candidate.get("nvd_record_in_window") is False
     for entry in criteria:
+        # NVD applicability trees can contain non-vulnerable environmental
+        # match criteria. Only an explicitly vulnerable criterion may justify
+        # an analyst approval for this product.
+        if not isinstance(entry, dict) or entry.get("vulnerable") is not True:
+            continue
         source_cpe = entry.get("criteria", "")
         if not isinstance(source_cpe, str) or not source_cpe.startswith(CPE_PREFIX):
             continue
@@ -254,9 +259,12 @@ def record_decision(
     audit_file.parent.mkdir(parents=True, exist_ok=True)
     entries, previous_hash = _read_audit(audit_file)
     event = {
-        "schema_version": 1, "cve": cve, "decision": decision,
+        "schema_version": 2, "cve": cve, "decision": decision,
         "reviewed_by": reviewer, "reviewed_at": reviewed_at,
         "rationale": rationale, "evidence_url": evidence_url,
+        # Bind every field in the materialized approval (including CPE,
+        # affected firmware, CVSS, KEV flag and summary) to this audit event.
+        "approval_sha256": hashlib.sha256(_canonical(approval)).hexdigest(),
         "source_group": "candidates" if candidate.get("nvd_record_in_window") else "kev_only",
         "previous_hash": previous_hash,
     }
@@ -333,7 +341,15 @@ def export_reviewed_approvals(approvals_path: str | Path, inbox_path: str | Path
         event = latest.get(cve)
         if not event or event.get("decision") != "approved":
             raise ReviewError(f"{cve} has no latest approved decision in the audit log.")
-        if event.get("evidence_url") != evidence or event.get("reviewed_by") != row.get("reviewed_by"):
+        approval_hash = hashlib.sha256(_canonical(row)).hexdigest()
+        if event.get("approval_sha256") != approval_hash:
+            raise ReviewError(f"{cve} approval does not match the complete audit-record hash.")
+        if (
+            event.get("evidence_url") != evidence
+            or event.get("reviewed_by") != row.get("reviewed_by")
+            or event.get("reviewed_at") != row.get("reviewed_at")
+            or event.get("rationale") != row.get("rationale")
+        ):
             raise ReviewError(f"{cve} approval does not match its latest audit event.")
         approved.append({
             "cve": cve, "cpe": row["cpe"],

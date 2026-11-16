@@ -69,32 +69,26 @@ Create an inventory JSON file. Manufacturer, model, firmware and CPE must be sou
 }
 ```
 
-Create a local advisory JSON file:
+Assessment no longer accepts an arbitrary advisory JSON file. CVE matching is enabled only when CamGuard validates analyst decisions against the current pending inbox and the hash-chained review audit.
 
-```json
-{
-  "advisories": [
-    {
-      "cve": "CVE-2024-12345",
-      "cpe": "cpe:2.3:o:example:camera_model_x_firmware:1.2.3:*:*:*:*:*:*:*",
-      "affected_versions": ["1.2.3"],
-      "cvss_base_score": 8.1,
-      "source": "https://vendor.example/security-advisory",
-      "summary": "Replace with the advisory publisher's verified summary."
-    }
-  ]
-}
-```
-
-The example CVE and vendor data above are placeholders, **not a real vulnerability claim**. Replace them with validated advisory records before client use. Version matching is exact by design; ranges, aliases and vendor-specific version semantics require analyst review and are not guessed.
-
-Run offline enrichment:
+Run offline enrichment without CVE advisories:
 
 ```bash
-python -m camguard assess --inventory inventory.json --advisories advisories.json --output-dir reports
+python -m camguard assess --inventory inventory.json --output-dir reports
 ```
 
-The command does not perform network probes. Manufacturer/model/firmware details are included as supplied and labelled by verification status.
+When you have completed analyst review, provide all three approval records:
+
+```bash
+python -m camguard assess \
+  --inventory inventory.json \
+  --approvals data/advisories/approvals.json \
+  --inbox data/advisories/inbox/pending-review.json \
+  --audit data/advisories/review-audit.jsonl \
+  --output-dir reports
+```
+
+CamGuard verifies the audit chain and revalidates each approved record against the current inbox before matching. It creates the validated advisory dataset in a temporary directory and removes it after loading. Supplying only one or two approval inputs is rejected. The assessment performs no external API calls or network probes. Manufacturer/model/firmware details are included as supplied and labelled by verification status.
 
 ## Risk prioritization (Milestone 5.3)
 
@@ -230,7 +224,11 @@ python -m camguard export-approved \
   --output data/advisories/approved-advisories.json
 ```
 
-The exporter rejects approvals absent from the inbox, mismatched CPE applicability, altered CVSS scores, missing rationale/reviewer metadata, or decisions without a matching latest approved audit event. Rejected and pending decisions are never exported. Keep generated inboxes, approvals, audit logs and client-specific review data out of public commits unless a deliberate, access-controlled review process requires them.
+The exporter rejects approvals absent from the inbox, mismatched CPE applicability, altered CVSS scores, missing rationale/reviewer metadata, or decisions without a matching latest approved audit event. For NVD candidates, only applicability criteria explicitly marked `vulnerable: true` can support approval; non-vulnerable environmental match criteria are ignored. Each new audit event also stores a SHA-256 digest of the complete materialized approval record, binding the CPE, affected firmware versions, CVSS score, KEV flag, summary and reviewer metadata to the analyst decision. Export recomputes this digest and rejects any changed approval field.
+
+**Audit format migration:** approvals created before complete-record digests were introduced are not exportable under the strengthened policy. Re-review each still-valid approval using `review-advisories decide` to write a new digest-bound audit event and replace its approval record. Preserve and back up the existing approvals and audit files; do not delete the historical audit chain. Re-review does not alter the source inbox.
+
+Rejected and pending decisions are never exported. Keep generated inboxes, approvals, audit logs and client-specific review data out of public commits unless a deliberate, access-controlled review process requires them.
 
 1. Analyst opens each candidate's NVD record and original vendor advisory.
 2. Confirm the exact product/model and interpret the vendor's affected-version statement. Do not copy an NVD version range into an exact-version list without reviewing its meaning.

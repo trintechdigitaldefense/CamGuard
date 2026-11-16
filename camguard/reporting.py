@@ -58,6 +58,6 @@ def write_reports(result: dict[str, Any], output_dir: str) -> tuple[Path, Path]:
                   f"- Confidence: {method.get('confidence', 'Reported separately from score.')}"]
         lines += [f"- Limitation: {item}" for item in method.get("limitations", [])]
     lines += ["", "## Limitations"] + [f"- {item}" for item in result["limitations"]]
-    lines += ["", "> This report records TCP reachability only. It is not proof of compromise or a complete vulnerability assessment.", ""]
+    lines += ["", "> This report reflects only the assessment method and evidence described above. It is not proof of compromise, exploitability, or safety.", ""]
     md_path.write_text("\n".join(lines), encoding="utf-8")
     return json_path, md_path

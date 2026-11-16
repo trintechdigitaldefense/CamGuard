@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
+from pathlib import Path
 from datetime import datetime, timezone
 
 from .advisory_ingest import AdvisoryIngestionError, export_approved, ingest_sources
@@ -75,9 +77,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("manufacturer-catalog", help="Show supported CCTV manufacturer names and exact aliases.")
 
-    assess = sub.add_parser("assess", help="Enrich an operator-supplied verified camera inventory and match a local CVE advisory file.")
+    assess = sub.add_parser("assess", help="Enrich verified camera inventory using audit-verified analyst-approved advisories.")
     assess.add_argument("--inventory", required=True, help="JSON or CSV inventory supplied from approved client records.")
-    assess.add_argument("--advisories", help="Local JSON advisory dataset; no external API calls are made.")
+    assess.add_argument("--approvals", help="Analyst approvals JSON produced by the review workflow.")
+    assess.add_argument("--inbox", help="Current pending advisory inbox used to verify approvals.")
+    assess.add_argument("--audit", help="Hash-chained analyst review audit log.")
     assess.add_argument("--output-dir", default="reports", help="Directory for assessment reports.")
     return parser
 
@@ -100,7 +104,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Assessment complete: {len(result['assets'])} responsive assets, {len(result['findings'])} findings.")
             return 0
         if args.command == "metadata":
-            from pathlib import Path
             targets = [line.strip() for line in Path(args.targets).read_text(encoding="utf-8").splitlines() if line.strip() and not line.lstrip().startswith("#")]
             result = collect_metadata(targets, args.authorized, timeout=args.timeout)
             Path(args.output).write_text(json.dumps(result, indent=2), encoding="utf-8")
@@ -147,17 +150,30 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "assess":
             inventory = load_inventory(args.inventory)
-            advisories = load_advisories(args.advisories) if args.advisories else []
+            approval_inputs = (args.approvals, args.inbox, args.audit)
+            if any(approval_inputs) and not all(approval_inputs):
+                raise ValueError("--approvals, --inbox and --audit must be supplied together.")
+
+            advisories = []
+            if all(approval_inputs):
+                from .advisory_review import export_reviewed_approvals
+                with tempfile.TemporaryDirectory(prefix="camguard-approved-") as temporary:
+                    approved_path = Path(temporary) / "approved-advisories.json"
+                    export_reviewed_approvals(
+                        args.approvals, args.inbox, approved_path, args.audit
+                    )
+                    advisories = load_advisories(str(approved_path))
+
             result = {
                 "tool": "TrinTech CamGuard", "version": "0.4.0",
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "scope": {"cidr": "operator-supplied inventory", "addresses_considered": len(inventory), "authorization_attested": False},
-                "scan_type": "offline inventory enrichment and exact CVE advisory matching; no network probes",
+                "scan_type": "offline inventory enrichment and audit-verified advisory matching; no network probes",
                 "assets": [{"ip": ip, "open_ports": [], "observed_at": None} for ip in sorted(inventory)],
                 "findings": [], "limitations": [
                     "Identity and firmware values are only as reliable as the operator-supplied source.",
                     "CVE matches require verified inventory, exact CPE equality and exact firmware-version equality.",
-                    "The advisory file may be incomplete or stale; verify each advisory with its publisher.",
+                    "Only advisories validated against the current inbox and hash-chained analyst audit are eligible for CVE matching.",
                     "No device login, HTTP fingerprinting, external lookup, or configuration change is performed.",
                 ],
             }
