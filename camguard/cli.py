@@ -38,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     approve.add_argument("--approvals", required=True, help="Analyst-maintained approvals JSON file.")
     approve.add_argument("--output", default="data/advisories/approved-advisories.json", help="Approved advisory output path.")
     approve.add_argument("--inbox", required=True, help="Pending inbox used to verify each approved CVE.")
+    approve.add_argument("--audit", default="data/advisories/review-audit.jsonl", help="Hash-chained analyst review audit log.")
 
     review = sub.add_parser("review-advisories", help="Search pending advisories, record analyst decisions and verify the audit log.")
     review.add_argument("action", choices=("list", "decide", "verify-audit"))
@@ -98,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "export-approved":
             from .advisory_review import export_reviewed_approvals
-            count = export_reviewed_approvals(args.approvals, args.inbox, args.output)
+            count = export_reviewed_approvals(args.approvals, args.inbox, args.output, args.audit)
             print(f"Exported {count} inbox-verified analyst-approved advisories: {args.output}")
             return 0
         if args.command == "review-advisories":
