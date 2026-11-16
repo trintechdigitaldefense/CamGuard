@@ -1,0 +1,63 @@
+name: Publish CamGuard 0.5.0rc1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-camguard-release.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out validated release source
+        uses: actions/checkout@v4
+        with:
+          ref: e288d2ec78aca46de57243b5dcc9a4eb614f7025
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build --wheel
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          wheels = list(Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, wheels
+          wheel = wheels[0]
+          with ZipFile(wheel) as archive:
+              names = archive.namelist()
+              forbidden = ("advisories/inbox/", "approvals.json", "approved-advisories.json", "review-audit.jsonl", "client")
+              matches = [name for name in names if any(token in name.lower() for token in forbidden)]
+              if matches:
+                  raise SystemExit(f"Sensitive files in wheel: {matches}")
+          print(f"Validated wheel: {wheel}")
+          PY
+
+      - name: Verify isolated installation and CLI
+        run: |
+          python -m venv /tmp/camguard-publish-venv
+          /tmp/camguard-publish-venv/bin/python -m pip install dist/*.whl
+          /tmp/camguard-publish-venv/bin/camguard --help
+          /tmp/camguard-publish-venv/bin/camguard assess --help
+          /tmp/camguard-publish-venv/bin/camguard review-advisories --help
+
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create 0.5.0rc1 dist/*.whl \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target e288d2ec78aca46de57243b5dcc9a4eb614f7025 \
+            --title "CamGuard 0.5.0rc1" \
+            --prerelease \
+            --notes "CamGuard 0.5.0 release candidate. Built from validated source commit e288d2ec78aca46de57243b5dcc9a4eb614f7025. Includes the authorized, read-only CCTV and IP camera assessment workflow, analyst-gated advisory review, explainable risk prioritization, and hardened reporting. This is a release candidate, not a stable 0.5.0 release."
