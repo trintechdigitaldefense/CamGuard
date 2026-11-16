@@ -54,15 +54,49 @@ class AssessApprovalBoundaryTests(unittest.TestCase):
             self.assertEqual(main(["assess", "--inventory", str(self.inventory), "--approvals", str(self.approvals)]), 2)
             writer.assert_not_called()
 
-    def test_assess_uses_only_audit_verified_approval_export(self):
+    def test_assess_uses_only_audit_verified_approval_export_and_cleans_tempdir(self):
         self._approve()
         captured = []
+        created = []
+        real_tempdir = tempfile.TemporaryDirectory
+
+        def make_tempdir(*args, **kwargs):
+            directory = real_tempdir(*args, **kwargs)
+            created.append(Path(directory.name))
+            return directory
+
         args = ["assess", "--inventory", str(self.inventory),
                 "--approvals", str(self.approvals), "--inbox", str(self.inbox),
                 "--audit", str(self.audit), "--output-dir", str(self.output)]
-        with patch("camguard.cli._write_all", side_effect=lambda result, output: captured.append(result)):
-            self.assertEqual(main(args), 0)
+        with patch("camguard.cli.tempfile.TemporaryDirectory", side_effect=make_tempdir):
+            with patch("camguard.cli._write_all", side_effect=lambda result, output: captured.append(result)):
+                self.assertEqual(main(args), 0)
         self.assertEqual([item["cve"] for item in captured[0]["findings"]], ["CVE-2026-1234"])
+        self.assertEqual(len(created), 1)
+        self.assertFalse(created[0].exists())
+
+    def test_assess_cleans_tempdir_when_approval_validation_fails(self):
+        self._approve()
+        approvals = json.loads(self.approvals.read_text())
+        approvals["approvals"][0]["affected_versions"] = ["9.9.9"]
+        self.approvals.write_text(json.dumps(approvals))
+        created = []
+        real_tempdir = tempfile.TemporaryDirectory
+
+        def make_tempdir(*args, **kwargs):
+            directory = real_tempdir(*args, **kwargs)
+            created.append(Path(directory.name))
+            return directory
+
+        args = ["assess", "--inventory", str(self.inventory),
+                "--approvals", str(self.approvals), "--inbox", str(self.inbox),
+                "--audit", str(self.audit), "--output-dir", str(self.output)]
+        with patch("camguard.cli.tempfile.TemporaryDirectory", side_effect=make_tempdir):
+            with patch("camguard.cli._write_all") as writer:
+                self.assertEqual(main(args), 2)
+                writer.assert_not_called()
+        self.assertEqual(len(created), 1)
+        self.assertFalse(created[0].exists())
 
     def test_assess_rejects_broken_audit_chain(self):
         self._approve()
