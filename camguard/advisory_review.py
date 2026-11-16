@@ -261,7 +261,8 @@ def verify_audit(path: str | Path) -> dict[str, Any]:
 
 
 def export_reviewed_approvals(approvals_path: str | Path, inbox_path: str | Path,
-                              output_path: str | Path) -> int:
+                              output_path: str | Path,
+                              audit_path: str | Path | None = None) -> int:
     """Export only approved records present in the inbox and backed by the audit chain."""
     from .advisory_ingest import _atomic_json
 
@@ -271,10 +272,8 @@ def export_reviewed_approvals(approvals_path: str | Path, inbox_path: str | Path
     rows = approvals_payload.get("approvals") if isinstance(approvals_payload, dict) else None
     if not isinstance(rows, list):
         raise ReviewError("Approvals file must contain an approvals array.")
-    audit_path = Path(approvals_path).with_name("review-audit.jsonl")
-    # The caller may store the audit elsewhere; require the canonical sibling audit
-    # file so the CLI export cannot silently bypass decision provenance.
-    audit_entries, _ = _read_audit(audit_path)
+    audit_file = Path(audit_path) if audit_path else Path(approvals_path).with_name("review-audit.jsonl")
+    audit_entries, _ = _read_audit(audit_file)
     latest: dict[str, dict[str, Any]] = {}
     for event in audit_entries:
         latest[event["cve"]] = event
