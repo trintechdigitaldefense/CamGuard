@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from xml.sax.saxutils import escape
 from typing import Any
 
 from reportlab.lib import colors
@@ -29,6 +30,7 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
     styles.add(ParagraphStyle(name="Section", parent=styles["Heading2"], textColor=NAVY, fontSize=14, leading=18, spaceBefore=12, spaceAfter=7))
     styles.add(ParagraphStyle(name="Small", parent=styles["BodyText"], fontSize=8, leading=11))
     styles.add(ParagraphStyle(name="Tiny", parent=styles["BodyText"], fontSize=7, leading=9, textColor=colors.HexColor("#526273")))
+    safe = lambda value: escape(str(value))
     story = [
         Paragraph("TRINTECH DIGITAL DEFENSE", styles["BrandSub"]),
         Paragraph("CamGuard Security Assessment", styles["BrandTitle"]),
@@ -73,26 +75,37 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
     if not findings:
         story.append(Paragraph("No findings were generated from the supplied evidence.", styles["BodyText"]))
     for index, finding in enumerate(findings, 1):
-        title = f"{index}. {finding.get('title', finding.get('cve', 'Finding'))} — {str(finding.get('severity', 'info')).upper()}"
-        if finding.get("cve"):
-            title = f"{index}. {finding['cve']} — {str(finding.get('severity', 'info')).upper()}"
+        raw_title = finding.get('title', finding.get('cve', 'Finding'))
+        if finding.get('cve'):
+            raw_title = finding['cve']
+        title = safe(f"{index}. {raw_title} — {str(finding.get('severity', 'info')).upper()}")
         body = [
-            f"<b>Asset:</b> {finding.get('asset_ip', 'N/A')}",
-            f"<b>Risk score:</b> {finding.get('risk_score', 0)} / 100 ({finding.get('risk_basis', 'unscored')})",
-            f"<b>Evidence:</b> {finding.get('evidence', finding.get('summary', 'Not supplied'))}",
-            f"<b>Recommendation:</b> {finding.get('recommendation', 'Review vendor advisory and plan remediation.')}",
-            f"<b>Source:</b> {finding.get('source', 'CamGuard observation')}",
+            f"<b>Asset:</b> {safe(finding.get('asset_ip', 'N/A'))}",
+            f"<b>Risk score:</b> {safe(finding.get('risk_score', 0))} / 100 — {safe(finding.get('risk_rating', 'unscored'))} (confidence: {safe(finding.get('evidence_confidence', 'unknown'))})",
+            f"<b>Score components:</b> {safe(finding.get('risk_components', {}))}",
+            f"<b>Why this score:</b> {safe('; '.join(str(item) for item in finding.get('risk_explanation', [])))}",
+            f"<b>Evidence:</b> {safe(finding.get('evidence', finding.get('summary', 'Not supplied')))}",
+            f"<b>Recommendation:</b> {safe(finding.get('recommendation', 'Review vendor advisory and plan remediation.'))}",
+            f"<b>Source:</b> {safe(finding.get('source', 'CamGuard observation'))}",
         ]
         story.append(KeepTogether([Paragraph(title, styles["Heading4"]), Paragraph("<br/>".join(body), styles["Small"]), Spacer(1, 5)]))
     story.append(Paragraph("Scoring methodology and limitations", styles["Section"]))
     method = result.get("risk_methodology", {})
-    story.append(Paragraph(
-        (method.get("aggregation", "Risk scores are triage aids.") + " " +
-         method.get("cvss", "") + " " + method.get("heuristics", "")),
-        styles["Small"],
-    ))
+    methodology = [
+        "<b>Formula:</b> " + safe(method.get("formula", "Risk scores are triage aids.")),
+        "<b>Aggregation:</b> " + safe(method.get("aggregation", "Highest-scoring finding per asset.")),
+        "<b>KEV uplift:</b> " + safe(method.get("kev_uplift", "Not specified.")),
+        "<b>Exposure uplifts:</b> " + safe(method.get("exposure_uplifts", {})),
+        "<b>Exposure policy:</b> " + safe(method.get("exposure_policy", "Unverified exposure is not scored.")),
+        "<b>Service findings:</b> " + safe(method.get("service_findings", "Not specified.")),
+        "<b>Evidence confidence:</b> " + safe(method.get("confidence", "Reported separately from score.")),
+        "<b>Rating bands:</b> " + safe(method.get("ratings", {})),
+    ]
+    story.append(Paragraph("<br/>".join(methodology), styles["Small"]))
+    for limitation in method.get("limitations", []):
+        story.append(Paragraph("• " + safe(limitation), styles["Tiny"]))
     for limitation in result.get("limitations", []):
-        story.append(Paragraph("• " + limitation, styles["Tiny"]))
+        story.append(Paragraph("• " + safe(limitation), styles["Tiny"]))
     story.append(Spacer(1, 10))
     story.append(Paragraph(
         "CONFIDENTIAL CLIENT REPORT — Prepared by TrinTech Digital Defense. "

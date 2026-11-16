@@ -32,7 +32,9 @@ def write_reports(result: dict[str, Any], output_dir: str) -> tuple[Path, Path]:
         lines.append("No hosts responded on the assessed TCP ports.")
     for asset in result["assets"]:
         ports = ", ".join(f"{p['port']} ({p['service']})" for p in asset["open_ports"])
-        lines.append(f"- **{asset['ip']}** — {ports}")
+        lines.append(f"- **{asset['ip']}** — {ports}; risk **{asset.get('risk_rating', 'unscored')} {asset.get('risk_score', 0)}/100** (confidence: {asset.get('risk_confidence', 'unknown')})")
+        for reason in asset.get("risk_explanation", []):
+            lines.append(f"  - Risk rationale: {reason}")
     lines += ["", "## Findings"]
     if not result["findings"]:
         lines.append("No listed services were detected.")
@@ -42,9 +44,20 @@ def write_reports(result: dict[str, Any], output_dir: str) -> tuple[Path, Path]:
             f"- Asset: {finding['asset_ip']}",
             f"- Evidence: {finding['evidence']}",
             f"- Recommendation: {finding['recommendation']}",
+            f"- Risk: {finding.get('risk_rating', 'unscored')} {finding.get('risk_score', 0)}/100; evidence confidence: {finding.get('evidence_confidence', 'unknown')}",
+            f"- Risk components: {finding.get('risk_components', {})}",
+            *[f"- Why this score: {reason}" for reason in finding.get("risk_explanation", [])],
             "",
         ]
-    lines += ["## Limitations"] + [f"- {item}" for item in result["limitations"]]
-    lines += ["", "> This report records TCP reachability only. It is not proof of compromise or a complete vulnerability assessment.", ""]
+    method = result.get("risk_methodology", {})
+    if method:
+        lines += ["", "## Risk prioritization methodology",
+                  f"- Formula: {method.get('formula', 'See per-finding rationale.')}",
+                  f"- Aggregation: {method.get('aggregation', 'Highest finding per asset.')}",
+                  f"- Exposure policy: {method.get('exposure_policy', 'Unverified exposure is not scored.')}",
+                  f"- Confidence: {method.get('confidence', 'Reported separately from score.')}"]
+        lines += [f"- Limitation: {item}" for item in method.get("limitations", [])]
+    lines += ["", "## Limitations"] + [f"- {item}" for item in result["limitations"]]
+    lines += ["", "> This report reflects only the assessment method and evidence described above. It is not proof of compromise, exploitability, or safety.", ""]
     md_path.write_text("\n".join(lines), encoding="utf-8")
     return json_path, md_path

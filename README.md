@@ -69,40 +69,63 @@ Create an inventory JSON file. Manufacturer, model, firmware and CPE must be sou
 }
 ```
 
-Create a local advisory JSON file:
+Assessment no longer accepts an arbitrary advisory JSON file. CVE matching is enabled only when CamGuard validates analyst decisions against the current pending inbox and the hash-chained review audit.
+
+Run offline enrichment without CVE advisories:
+
+```bash
+python -m camguard assess --inventory inventory.json --output-dir reports
+```
+
+When you have completed analyst review, provide all three approval records:
+
+```bash
+python -m camguard assess \
+  --inventory inventory.json \
+  --approvals data/advisories/approvals.json \
+  --inbox data/advisories/inbox/pending-review.json \
+  --audit data/advisories/review-audit.jsonl \
+  --output-dir reports
+```
+
+CamGuard verifies the audit chain and revalidates each approved record against the current inbox before matching. It creates the validated advisory dataset in a temporary directory and removes it after loading. Supplying only one or two approval inputs is rejected. The assessment performs no external API calls or network probes. Manufacturer/model/firmware details are included as supplied and labelled by verification status.
+
+## Risk prioritization (Milestone 5.3)
+
+CamGuard produces a transparent per-finding score, a per-asset priority and a human-readable explanation. The score is a triage aid, **not** a probability of compromise.
+
+For an exact, verified device CPE and firmware match against an analyst-approved advisory:
+
+- CVSS component: CVSS base score × 10, rounded to an integer.
+- CISA KEV component: +10 points when the approved advisory is marked as present in the current CISA KEV catalogue.
+- Verified network exposure component: internet-exposed +15; internal segment +5; isolated +0; unknown +0.
+- Final score: sum of components, capped at 100.
+- Asset aggregation: highest-scoring finding; findings are not added together.
+
+Network exposure is optional operator-supplied context in the inventory record. Use `network_exposure` with one of `internet_exposed`, `internal_segment`, `isolated` or `unknown`; set `network_exposure_verified: true` only when supported by current client network evidence, and record `network_exposure_source`. CamGuard never infers internet exposure from a private-scope scan. Unverified or unknown exposure receives no uplift.
+
+Example inventory fields:
 
 ```json
 {
-  "advisories": [
-    {
-      "cve": "CVE-2024-12345",
-      "cpe": "cpe:2.3:o:example:camera_model_x_firmware:1.2.3:*:*:*:*:*:*:*",
-      "affected_versions": ["1.2.3"],
-      "cvss_base_score": 8.1,
-      "source": "https://vendor.example/security-advisory",
-      "summary": "Replace with the advisory publisher's verified summary."
-    }
-  ]
+  "ip": "192.168.10.20",
+  "vendor": "Example Manufacturer",
+  "model": "Camera Model X",
+  "firmware": "1.2.3",
+  "cpe": "cpe:2.3:o:example:camera_model_x_firmware:1.2.3:*:*:*:*:*:*:*",
+  "source": "Technician verified device label and vendor export",
+  "verified": true,
+  "network_exposure": "internal_segment",
+  "network_exposure_verified": true,
+  "network_exposure_source": "Client firewall and VLAN review dated 2026-11-15"
 }
 ```
 
-The example CVE and vendor data above are placeholders, **not a real vulnerability claim**. Replace them with validated advisory records before client use. Version matching is exact by design; ranges, aliases and vendor-specific version semantics require analyst review and are not guessed.
+Evidence confidence is reported separately from severity: high requires exact verified identity/firmware and analyst-review provenance; medium indicates an exact match with incomplete provenance; network-only observations are low confidence as vulnerability evidence. A CVE without exact verified applicability is fail-closed and receives no device-level CVE/KEV/exposure score. Service reachability findings use conservative heuristics only and never receive CVE or KEV uplifts.
 
-Run offline enrichment:
+Every finding and asset includes score components, confidence, and reasons in JSON. Markdown and PDF reports also show the explanation. A zero score means no scored finding was associated with the asset; it does **not** prove the asset is safe.
 
-```bash
-python -m camguard assess --inventory inventory.json --advisories advisories.json --output-dir reports
-```
-
-The command does not perform network probes. Manufacturer/model/firmware details are included as supplied and labelled by verification status.
-
-## Risk scoring
-
-- CVE findings: CVSS base score × 10.
-- Reachable-service observations: conservative heuristic values (informational 10, low 30, medium 55).
-- Asset score: highest finding score for that asset; scores are not added together.
-- CVSS and heuristic scores are triage aids, not probability of compromise.
-- Internet exposure, business impact, compensating controls and environmental exploitability are not currently assessed.
+The model does not currently score business criticality, compensating controls, exploitability in the client environment or active compromise.
 
 ## Reports
 
@@ -201,7 +224,11 @@ python -m camguard export-approved \
   --output data/advisories/approved-advisories.json
 ```
 
-The exporter rejects approvals absent from the inbox, mismatched CPE applicability, altered CVSS scores, missing rationale/reviewer metadata, or decisions without a matching latest approved audit event. Rejected and pending decisions are never exported. Keep generated inboxes, approvals, audit logs and client-specific review data out of public commits unless a deliberate, access-controlled review process requires them.
+The exporter rejects approvals absent from the inbox, mismatched CPE applicability, altered CVSS scores, missing rationale/reviewer metadata, or decisions without a matching latest approved audit event. For NVD candidates, only applicability criteria explicitly marked `vulnerable: true` can support approval; non-vulnerable environmental match criteria are ignored. Each new audit event also stores a SHA-256 digest of the complete materialized approval record, binding the CPE, affected firmware versions, CVSS score, KEV flag, summary and reviewer metadata to the analyst decision. Export recomputes this digest and rejects any changed approval field.
+
+**Audit format migration:** approvals created before complete-record digests were introduced are not exportable under the strengthened policy. Re-review each still-valid approval using `review-advisories decide` to write a new digest-bound audit event and replace its approval record. Preserve and back up the existing approvals and audit files; do not delete the historical audit chain. Re-review does not alter the source inbox.
+
+Rejected and pending decisions are never exported. Keep generated inboxes, approvals, audit logs and client-specific review data out of public commits unless a deliberate, access-controlled review process requires them.
 
 1. Analyst opens each candidate's NVD record and original vendor advisory.
 2. Confirm the exact product/model and interpret the vendor's affected-version statement. Do not copy an NVD version range into an exact-version list without reviewing its meaning.

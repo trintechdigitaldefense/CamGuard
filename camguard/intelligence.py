@@ -1,4 +1,4 @@
-"""Enrich scanned assets using operator-supplied, verified device inventory and advisory data.
+"""Enrich scanned assets using verified inventory and analyst-approved advisories.
 
 No device login, fingerprint probing, or external API calls are performed here.
 """
@@ -11,10 +11,21 @@ from pathlib import Path
 from typing import Any
 
 CVE_ID = re.compile(r"^CVE-\d{4}-\d{4,}$", re.I)
+EXPOSURE_VALUES = {"internet_exposed", "internal_segment", "isolated", "unknown"}
+
+
+def _clean(value: Any) -> str:
+    return str(value).strip() if value is not None else ""
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes"}
 
 
 def load_inventory(path: str) -> dict[str, dict[str, Any]]:
-    """Load JSON list or CSV keyed by IP. Values must come from approved records."""
+    """Load JSON list or CSV keyed by IP; verification is an explicit operator attestation."""
     file = Path(path)
     if file.suffix.lower() == ".csv":
         with file.open(newline="", encoding="utf-8-sig") as handle:
@@ -24,20 +35,30 @@ def load_inventory(path: str) -> dict[str, dict[str, Any]]:
         rows = payload.get("devices", payload) if isinstance(payload, dict) else payload
     if not isinstance(rows, list):
         raise ValueError("Inventory must be a JSON array/object with devices or a CSV file.")
-    result = {}
+    result: dict[str, dict[str, Any]] = {}
     for row in rows:
         if not isinstance(row, dict) or not row.get("ip"):
             raise ValueError("Every inventory record must be an object with an ip field.")
         ip = str(row["ip"]).strip()
         if ip in result:
             raise ValueError(f"Duplicate inventory IP: {ip}")
+        exposure = _clean(row.get("network_exposure")).lower() or "unknown"
+        if exposure not in EXPOSURE_VALUES:
+            raise ValueError(f"Invalid network_exposure for {ip}; choose one of {sorted(EXPOSURE_VALUES)}.")
+        exposure_verified = _as_bool(row.get("network_exposure_verified", False))
+        exposure_source = _clean(row.get("network_exposure_source"))
+        if exposure_verified and exposure != "unknown" and not exposure_source:
+            raise ValueError(f"Verified network_exposure for {ip} requires network_exposure_source.")
         result[ip] = {
             "vendor": _clean(row.get("vendor")),
             "model": _clean(row.get("model")),
             "firmware": _clean(row.get("firmware")),
             "cpe": _clean(row.get("cpe")),
             "source": _clean(row.get("source")) or "operator-supplied inventory",
-            "verified": str(row.get("verified", "false")).lower() in ("1", "true", "yes"),
+            "verified": _as_bool(row.get("verified", False)),
+            "network_exposure": exposure,
+            "network_exposure_verified": exposure_verified,
+            "network_exposure_source": exposure_source,
         }
     return result
 
@@ -49,6 +70,8 @@ def load_advisories(path: str) -> list[dict[str, Any]]:
         raise ValueError("Advisories must be a JSON array/object with advisories.")
     clean = []
     for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("Every advisory must be an object.")
         cve = str(row.get("cve", "")).upper()
         cpe = _clean(row.get("cpe"))
         versions = row.get("affected_versions", [])
@@ -61,28 +84,33 @@ def load_advisories(path: str) -> list[dict[str, Any]]:
             "cve": cve, "cpe": cpe, "affected_versions": [str(v) for v in versions],
             "cvss_base_score": score, "source": _clean(row.get("source")) or "unspecified advisory source",
             "summary": _clean(row.get("summary")) or "No summary supplied.",
-            "kev": bool(row.get("kev", False)),
+            "kev": _as_bool(row.get("kev", False)),
             "reviewed_by": _clean(row.get("reviewed_by")),
             "reviewed_at": _clean(row.get("reviewed_at")),
+            "rationale": _clean(row.get("rationale")),
         })
     return clean
 
 
-def _clean(value: Any) -> str:
-    return str(value).strip() if value is not None else ""
-
-
 def enrich_assets(result: dict[str, Any], inventory: dict[str, dict[str, Any]],
                   advisories: list[dict[str, Any]]) -> dict[str, Any]:
-    """Attach inventory and exact-match CVEs; never infer a device identity."""
+    """Attach identity and exact-match CVEs; never infer device or exposure context."""
     enriched = []
     cve_findings = []
     for asset in result.get("assets", []):
         record = inventory.get(asset["ip"], {})
-        device = {**asset, "identity": record, "identity_status": (
-            "operator-verified" if record.get("verified") else
-            "operator-supplied-unverified" if record else "unknown"
-        )}
+        identity_source = record.get("source", "")
+        device = {
+            **asset,
+            "identity": record,
+            "identity_status": (
+                "operator-verified" if record.get("verified") else
+                "operator-supplied-unverified" if record else "unknown"
+            ),
+            "network_exposure": record.get("network_exposure", "unknown"),
+            "network_exposure_verified": bool(record.get("network_exposure_verified")),
+            "network_exposure_source": record.get("network_exposure_source", ""),
+        }
         matches = []
         if record.get("verified") and record.get("cpe") and record.get("firmware"):
             for advisory in advisories:
@@ -95,8 +123,16 @@ def enrich_assets(result: dict[str, Any], inventory: dict[str, dict[str, Any]],
                         "evidence": f"Verified inventory exact-match: CPE {record['cpe']}, firmware {record['firmware']}.",
                         "severity": _cvss_severity(advisory["cvss_base_score"]),
                         "cisa_kev": bool(advisory.get("kev", False)),
+                        "exact_verified_match": True,
+                        "applicability": "exact CPE and exact firmware version",
+                        "identity_confidence": "high" if identity_source and identity_source != "operator-supplied inventory" else "medium",
+                        "identity_evidence_source": identity_source,
+                        "network_exposure": record.get("network_exposure", "unknown"),
+                        "network_exposure_verified": bool(record.get("network_exposure_verified")),
+                        "network_exposure_source": record.get("network_exposure_source", ""),
                         "reviewed_by": advisory.get("reviewed_by"),
                         "reviewed_at": advisory.get("reviewed_at"),
+                        "review_rationale": advisory.get("rationale"),
                     })
         device["matched_cves"] = [item["cve"] for item in matches]
         enriched.append(device)
@@ -107,6 +143,7 @@ def enrich_assets(result: dict[str, Any], inventory: dict[str, dict[str, Any]],
         "advisories_loaded": len(advisories),
         "matching_policy": "Exact CPE and exact firmware version only; requires verified inventory.",
         "identity_note": "Manufacturer/model/firmware are not inferred from open ports. Supply verified records.",
+        "exposure_note": "Network exposure is operator-supplied context and affects scoring only when explicitly marked verified with a source.",
     }
     return result
 
