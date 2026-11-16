@@ -8,3 +8,9 @@ dist/
 reports/
 .pytest_cache/
 .coverage
+
+# Local advisory intelligence and analyst review records
+data/advisories/inbox/
+data/advisories/approvals.json
+data/advisories/approved-advisories.json
+data/advisories/review-audit.jsonl
