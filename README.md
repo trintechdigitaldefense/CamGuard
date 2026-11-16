@@ -189,7 +189,7 @@ Every decision is appended to `data/advisories/review-audit.jsonl`, a SHA-256 ha
 python -m camguard review-advisories verify-audit
 ```
 
-The log is tamper-evident, not an immutable external archive; protect and back it up with the approvals file. Decisions are checked against the current pending inbox. For NVD candidates, the approved CPE must satisfy the source CPE applicability (all non-version source attributes must match; source wildcards may be resolved by the analyst). The approved CPE must contain a concrete version, and affected firmware versions cannot be wildcards. KEV-only entries have no NVD CPE applicability and therefore rely on independent vendor evidence; a CVSS score must still be available before approval.
+The log is tamper-evident, not an immutable external archive; protect and back it up with the approvals file. Decisions are checked against the current pending inbox. For NVD candidates, the approved CPE must satisfy the source CPE applicability (all non-version source attributes must match; source wildcards may be resolved by the analyst). The approved CPE must contain a concrete version, and affected firmware versions cannot be wildcards. KEV-only entries have no NVD CPE applicability and therefore rely on independent vendor evidence; supply `--cvss-score` only when the score is documented by the cited source. NVD candidates must retain the NVD CVSS score.
 
 Export requires the matching inbox and audit log:
 
