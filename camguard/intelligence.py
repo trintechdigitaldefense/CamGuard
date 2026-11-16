@@ -45,6 +45,10 @@ def load_inventory(path: str) -> dict[str, dict[str, Any]]:
         exposure = _clean(row.get("network_exposure")).lower() or "unknown"
         if exposure not in EXPOSURE_VALUES:
             raise ValueError(f"Invalid network_exposure for {ip}; choose one of {sorted(EXPOSURE_VALUES)}.")
+        exposure_verified = _as_bool(row.get("network_exposure_verified", False))
+        exposure_source = _clean(row.get("network_exposure_source"))
+        if exposure_verified and exposure != "unknown" and not exposure_source:
+            raise ValueError(f"Verified network_exposure for {ip} requires network_exposure_source.")
         result[ip] = {
             "vendor": _clean(row.get("vendor")),
             "model": _clean(row.get("model")),
@@ -53,8 +57,8 @@ def load_inventory(path: str) -> dict[str, dict[str, Any]]:
             "source": _clean(row.get("source")) or "operator-supplied inventory",
             "verified": _as_bool(row.get("verified", False)),
             "network_exposure": exposure,
-            "network_exposure_verified": _as_bool(row.get("network_exposure_verified", False)),
-            "network_exposure_source": _clean(row.get("network_exposure_source")),
+            "network_exposure_verified": exposure_verified,
+            "network_exposure_source": exposure_source,
         }
     return result
 

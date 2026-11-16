@@ -92,6 +92,15 @@ class RiskPrioritizationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_inventory(str(path))
 
+    def test_verified_exposure_requires_evidence_source(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "inventory.json"
+            path.write_text(json.dumps({"devices": [{"ip": "192.168.1.10",
+                "network_exposure": "internet_exposed",
+                "network_exposure_verified": True}]}))
+            with self.assertRaisesRegex(ValueError, "requires network_exposure_source"):
+                load_inventory(str(path))
+
     def test_exact_enrichment_carries_exposure_and_review_evidence(self):
         cpe = "cpe:2.3:o:example:camera:1.2.3:*:*:*:*:*:*:*"
         inventory = {"192.168.1.10": {"vendor": "Example", "model": "Cam X",
