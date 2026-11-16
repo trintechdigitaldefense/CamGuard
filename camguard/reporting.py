@@ -18,6 +18,7 @@ def write_reports(result: dict[str, Any], output_dir: str) -> tuple[Path, Path]:
         "# TrinTech CamGuard Assessment",
         "",
         f"- Generated: {result['generated_at']}",
+        f"- CamGuard version: {result.get('version', 'unknown')}",
         f"- Authorized scope: {result['scope']['cidr']}",
         f"- Addresses considered: {result['scope']['addresses_considered']}",
         f"- Method: {result['scan_type']}",

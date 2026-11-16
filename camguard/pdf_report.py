@@ -39,6 +39,7 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
     ]
     summary = [
         ["Assessment date (UTC)", result.get("generated_at", "Not recorded")],
+        ["CamGuard version", result.get("version", "Unknown")],
         ["Authorized scope", result.get("scope", {}).get("cidr", "Inventory-only assessment")],
         ["Responsive assets", str(len(result.get("assets", [])))],
         ["Findings", str(len(result.get("findings", [])))],
