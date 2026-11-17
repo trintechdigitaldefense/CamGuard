@@ -1,23 +1,17 @@
 """Branded PDF report generation using ReportLab."""
 from __future__ import annotations
-
 from pathlib import Path
 from xml.sax.saxutils import escape
 from typing import Any
-
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether,
-)
-
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
 
 NAVY = colors.HexColor("#071426")
 CYAN = colors.HexColor("#00CFE8")
-GREEN = colors.HexColor("#00C58E")
 PALE = colors.HexColor("#EAF3F8")
 
 
@@ -31,29 +25,18 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
     styles.add(ParagraphStyle(name="Small", parent=styles["BodyText"], fontSize=8, leading=11))
     styles.add(ParagraphStyle(name="Tiny", parent=styles["BodyText"], fontSize=7, leading=9, textColor=colors.HexColor("#526273")))
     safe = lambda value: escape(str(value))
-    story = [
-        Paragraph("TRINTECH DIGITAL DEFENSE", styles["BrandSub"]),
-        Paragraph("CamGuard Security Assessment", styles["BrandTitle"]),
-        Paragraph("DEFEND. DETECT. DOMINATE.", styles["BrandSub"]),
-        Paragraph("Assessment overview", styles["Section"]),
-    ]
+    story = [Paragraph("TRINTECH DIGITAL DEFENSE", styles["BrandSub"]), Paragraph("CamGuard Security Assessment", styles["BrandTitle"]), Paragraph("DEFEND. DETECT. DOMINATE.", styles["BrandSub"]), Paragraph("Assessment overview", styles["Section"])]
     summary = [
         ["Assessment date (UTC)", result.get("generated_at", "Not recorded")],
         ["CamGuard version", result.get("version", "Unknown")],
         ["Authorized scope", result.get("scope", {}).get("cidr", "Inventory-only assessment")],
         ["Responsive assets", str(len(result.get("assets", [])))],
         ["Findings", str(len(result.get("findings", [])))],
+        ["Service observations", str(len(result.get("service_observations", [])))],
         ["Assessment method", result.get("scan_type", "Inventory and advisory correlation")],
     ]
     table = Table(summary, colWidths=[48*mm, 118*mm])
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (0, -1), PALE), ("TEXTCOLOR", (0, 0), (0, -1), NAVY),
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"), ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD7E1")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 7),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 7), ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
+    table.setStyle(TableStyle([("BACKGROUND", (0, 0), (0, -1), PALE), ("TEXTCOLOR", (0, 0), (0, -1), NAVY), ("FONTNAME", (0, 0), (-1, -1), "Helvetica"), ("FONTSIZE", (0, 0), (-1, -1), 8), ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD7E1")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
     story += [table, Paragraph("Asset inventory", styles["Section"])]
     asset_rows = [["IP address", "Manufacturer / model", "Firmware", "Risk"]]
     for asset in result.get("assets", []):
@@ -63,22 +46,34 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
     if len(asset_rows) == 1:
         asset_rows.append(["No assets", "No inventory records", "—", "—"])
     at = Table(asset_rows, colWidths=[32*mm, 60*mm, 42*mm, 32*mm], repeatRows=1)
-    at.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), NAVY), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("BACKGROUND", (0, 1), (-1, -1), colors.white), ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#CBD7E1")),
-        ("FONTSIZE", (0, 0), (-1, -1), 7), ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-    ]))
+    at.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), NAVY), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("BACKGROUND", (0, 1), (-1, -1), colors.white), ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#CBD7E1")), ("FONTSIZE", (0, 0), (-1, -1), 7), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5), ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
     story.append(at)
+    story.append(Paragraph("Service exposure observations", styles["Section"]))
+    observations = result.get("service_observations", [])
+    if not observations:
+        story.append(Paragraph("No service exposure observations were recorded.", styles["BodyText"]))
+    for obs in observations:
+        heading = safe(f"{obs.get('device_ip', 'Unknown IP')} — {obs.get('port', 'unknown')}/{str(obs.get('transport', 'tcp')).upper()}")
+        details = [
+            f"<b>Reachability:</b> {safe(obs.get('reachability', 'unknown'))}",
+            f"<b>Service:</b> {safe(obs.get('service_name') or 'Unknown')} ({safe(obs.get('service_identification', 'unknown'))})",
+            f"<b>Service evidence:</b> {safe(obs.get('service_evidence', 'Not recorded'))}",
+            f"<b>Encryption:</b> {safe(obs.get('encryption_status', 'unknown'))}",
+            f"<b>Encryption evidence:</b> {safe(obs.get('encryption_evidence', 'Not recorded'))}",
+            f"<b>Evidence confidence:</b> {safe(obs.get('evidence_confidence', 'unknown'))}",
+            f"<b>Why it matters:</b> {safe(obs.get('business_significance', 'Not assessed'))}",
+            f"<b>Recommended action:</b> {safe(obs.get('recommended_action', 'Verify with the administrator.'))}",
+        ]
+        details.extend(f"<b>Limitation:</b> {safe(item)}" for item in obs.get("limitations", []))
+        story.append(KeepTogether([Paragraph(heading, styles["Heading4"]), Paragraph("<br/>".join(details), styles["Small"]), Spacer(1, 5)]))
     story.append(Paragraph("Findings and recommended actions", styles["Section"]))
     findings = result.get("findings", [])
     if not findings:
         story.append(Paragraph("No findings were generated from the supplied evidence.", styles["BodyText"]))
     for index, finding in enumerate(findings, 1):
-        raw_title = finding.get('title', finding.get('cve', 'Finding'))
-        if finding.get('cve'):
-            raw_title = finding['cve']
+        raw_title = finding.get("title", finding.get("cve", "Finding"))
+        if finding.get("cve"):
+            raw_title = finding["cve"]
         title = safe(f"{index}. {raw_title} — {str(finding.get('severity', 'info')).upper()}")
         body = [
             f"<b>Asset:</b> {safe(finding.get('asset_ip', 'N/A'))}",
@@ -108,12 +103,7 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
     for limitation in result.get("limitations", []):
         story.append(Paragraph("• " + safe(limitation), styles["Tiny"]))
     story.append(Spacer(1, 10))
-    story.append(Paragraph(
-        "CONFIDENTIAL CLIENT REPORT — Prepared by TrinTech Digital Defense. "
-        "Findings depend on the supplied inventory, advisory data and authorized assessment scope. "
-        "A score is a prioritization aid, not a guarantee of compromise or safety.",
-        styles["Tiny"],
-    ))
+    story.append(Paragraph("CONFIDENTIAL CLIENT REPORT — Prepared by TrinTech Digital Defense. Findings depend on the supplied inventory, advisory data and authorized assessment scope. A score is a prioritization aid, not a guarantee of compromise or safety.", styles["Tiny"]))
 
     def footer(canvas, doc):
         canvas.saveState()
