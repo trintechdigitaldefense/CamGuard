@@ -14,7 +14,7 @@ CamGuard is a defensive assessment tool from **TrinTech Digital Defense**. It he
 
 ## What CamGuard does
 
-- Performs bounded TCP reachability checks against common camera/NVR ports on explicitly authorized private IPv4 scopes.
+- Performs bounded TCP reachability checks and evidence-based service observations for common camera/NVR ports on explicitly authorized private IPv4 scopes.
 - Accepts operator-supplied manufacturer, model, firmware and CPE inventory in JSON or CSV.
 - Collects limited, unauthenticated HTTPS landing-page metadata when explicitly requested for approved private IP addresses.
 - Retrieves public vulnerability intelligence from the NVD CVE API and CISA Known Exploited Vulnerabilities (KEV) catalogue into a review-only inbox.
@@ -73,7 +73,7 @@ Replace the example range with the exact private network in the written scope do
 camguard scan --cidr 192.168.10.0/28 --authorized --output-dir reports
 ```
 
-This checks TCP reachability only. It does not log in to devices or access video streams.
+The scan records reachability for each checked port. It makes a minimal unauthenticated HTTP HEAD request on ports 80/8080 and a TLS handshake attempt on 443/8443 to identify protocol evidence. Other ports remain unidentified unless positively confirmed. It does not log in to devices, access RTSP/video streams, or change configuration. Certificate trust is not evaluated by the TLS handshake observation.
 
 ### 2. Prepare verified device inventory
 
@@ -247,7 +247,7 @@ The project targets Python 3.10+. Run tests with synthetic data; never use real 
 
 ## Roadmap
 
-- **Proposed for 0.6.0:** evidence-based service exposure observations for authorized private CCTV/NVR networks. See the [0.6.0 design specification](docs/roadmap/0.6.0-service-exposure-assessment.md). This is a planned feature, not part of the current release.
+- **0.6.0 development:** initial evidence-based service exposure observations are implemented on the [development pull request](https://github.com/trintechdigitaldefense/CamGuard/pull/10). See the [design and implementation notes](docs/roadmap/0.6.0-service-exposure-assessment.md). This work is not included in the published 0.5.0rc1 release.
 - Guided camera/NVR configuration-hardening checklist.
 - Finding lifecycle, remediation evidence and historical comparisons.
 - Optional client-approved monitoring and alerting.
