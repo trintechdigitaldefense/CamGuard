@@ -112,6 +112,51 @@ class TechnicianInspectionCliTests(unittest.TestCase):
         self.assertTrue(data["valid"])
         self.assertEqual(data["summary"]["completed_checks"], 30)
 
+
+    def test_assess_attaches_matching_inspection_to_report_result(self):
+        inventory = self.root / "inventory.json"
+        inventory.write_text(json.dumps({"devices": [{
+            "ip": "192.168.1.10", "vendor": "Vendor", "model": "Camera",
+            "firmware": "1.2.3", "cpe": "cpe:2.3:o:vendor:camera:1.2.3:*:*:*:*:*:*:*",
+            "source": "Client asset register", "verified": True,
+        }]}))
+        inspection = create_inspection("assessment-attach", "asset-1", "192.168.1.10", "tech-1")
+        inspection_path = self.root / "attached-inspection.json"
+        write_inspection_json(inspection, inspection_path)
+        captured = []
+        from unittest.mock import patch
+        with patch("camguard.cli._write_all", side_effect=lambda result, output: captured.append(result)):
+            code = main([
+                "assess", "--inventory", str(inventory),
+                "--assessment-id", "assessment-attach",
+                "--inspection", str(inspection_path),
+                "--output-dir", str(self.root / "reports"),
+            ])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(captured[0]["inspections"]), 1)
+        self.assertEqual(captured[0]["inspections"][0]["asset_id"], "asset-1")
+
+    def test_assess_rejects_inspection_for_different_assessment(self):
+        inventory = self.root / "inventory.json"
+        inventory.write_text(json.dumps({"devices": [{
+            "ip": "192.168.1.10", "vendor": "Vendor", "model": "Camera",
+            "firmware": "1.2.3", "cpe": "cpe:2.3:o:vendor:camera:1.2.3:*:*:*:*:*:*:*",
+            "source": "Client asset register", "verified": True,
+        }]}))
+        inspection = create_inspection("another-assessment", "asset-1", "192.168.1.10", "tech-1")
+        inspection_path = self.root / "wrong-assessment.json"
+        write_inspection_json(inspection, inspection_path)
+        from unittest.mock import patch
+        with patch("camguard.cli._write_all") as writer:
+            code = main([
+                "assess", "--inventory", str(inventory),
+                "--assessment-id", "assessment-attach",
+                "--inspection", str(inspection_path),
+                "--output-dir", str(self.root / "reports"),
+            ])
+            writer.assert_not_called()
+        self.assertEqual(code, 2)
+
     def test_invalid_input_json_returns_cli_error(self):
         self.path.write_text("{broken")
         code, _, errors = self.run_cli(["validate", "--input", str(self.path)])
