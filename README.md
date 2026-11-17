@@ -248,6 +248,7 @@ The project targets Python 3.10+. Run tests with synthetic data; never use real 
 ## Roadmap
 
 - **0.6.0 development:** initial evidence-based service exposure observations are implemented on the [development pull request](https://github.com/trintechdigitaldefense/CamGuard/pull/10). See the [design and implementation notes](docs/roadmap/0.6.0-service-exposure-assessment.md). This work is not included in the published 0.5.0rc1 release.
+- **0.7.0 development:** technician-assisted inspection data model, six CCTV security checklists, evidence-reference handling and inspection report integration are being developed on a separate feature branch. See [the 0.7.0 inspection specification](docs/roadmap/0.7.0-technician-assisted-inspection.md). Not part of the published 0.5.0rc1 release.
 - Guided camera/NVR configuration-hardening checklist.
 - Finding lifecycle, remediation evidence and historical comparisons.
 - Optional client-approved monitoring and alerting.
