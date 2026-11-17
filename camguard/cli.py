@@ -84,6 +84,35 @@ def build_parser() -> argparse.ArgumentParser:
     assess.add_argument("--inbox", help="Current pending advisory inbox used to verify approvals.")
     assess.add_argument("--audit", help="Hash-chained analyst review audit log.")
     assess.add_argument("--output-dir", default="reports", help="Directory for assessment reports.")
+
+    inspection = sub.add_parser("inspection", help="Create and manage manual technician-assisted CCTV inspection records.")
+    inspection_actions = inspection.add_subparsers(dest="inspection_action", required=True)
+
+    inspection_create = inspection_actions.add_parser("create", help="Create a blank inspection record for one inventoried asset.")
+    inspection_create.add_argument("--assessment-id", required=True, help="Client assessment identifier.")
+    inspection_create.add_argument("--asset-id", required=True, help="Asset identifier from the client inventory.")
+    inspection_create.add_argument("--device-ip", required=True, help="Camera/NVR IPv4 address recorded in the inventory.")
+    inspection_create.add_argument("--inspector", required=True, help="Technician identifier or name.")
+    inspection_create.add_argument("--inspected-at", help="Inspection timestamp (ISO 8601); defaults to current UTC.")
+    inspection_create.add_argument("--output", required=True, help="New inspection JSON file to create.")
+
+    inspection_template = inspection_actions.add_parser("template", help="Display the six checklist categories and their 30 check IDs.")
+    inspection_template.add_argument("--category", choices=("account_permissions", "default_credential_policy", "nvr_configuration", "remote_access", "physical_security", "recording_retention"), help="Show one category; omit to show all.")
+
+    inspection_record = inspection_actions.add_parser("record", help="Record or replace one technician response in an inspection JSON file.")
+    inspection_record.add_argument("--input", required=True, help="Existing inspection JSON file.")
+    inspection_record.add_argument("--category", required=True, choices=("account_permissions", "default_credential_policy", "nvr_configuration", "remote_access", "physical_security", "recording_retention"))
+    inspection_record.add_argument("--check", required=True, help="Exact check ID shown by 'camguard inspection template'.")
+    inspection_record.add_argument("--status", required=True, choices=("pass", "fail", "not_verified", "not_applicable", "needs_attention"))
+    inspection_record.add_argument("--notes", default="", help="Technician explanation; never include credentials, tokens or secrets.")
+    inspection_record.add_argument("--evidence-ref", action="append", default=[], help="Operator-managed evidence reference; repeat for multiple references. Never attach footage or secrets.")
+    inspection_record.add_argument("--reviewed-at", help="Response timestamp (ISO 8601); defaults to current UTC.")
+    inspection_record.add_argument("--output", help="Output JSON path; defaults to updating --input.")
+
+    inspection_validate = inspection_actions.add_parser("validate", help="Validate an inspection and show its completion summary.")
+    inspection_validate.add_argument("--input", required=True, help="Inspection JSON file to validate.")
+    inspection_validate.add_argument("--require-complete", action="store_true", help="Return an error unless all 30 checks have responses.")
+
     return parser
 
 
@@ -95,9 +124,63 @@ def _write_all(result, output_dir):
     print(f"PDF report: {pdf_path}")
 
 
+def _read_inspection(path: str):
+    from .inspection import validate_inspection
+    inspection = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(inspection, dict):
+        raise ValueError("Inspection JSON must contain an object.")
+    validate_inspection(inspection, require_complete=False)
+    return inspection
+
+
+def _run_inspection(args) -> int:
+    from .inspection import (
+        CHECKLISTS, checklist_template, create_inspection, inspection_summary,
+        record_check, validate_inspection, write_inspection_json,
+    )
+    if args.inspection_action == "template":
+        templates = checklist_template()
+        if args.category:
+            templates = [item for item in templates if item["category_id"] == args.category]
+        print(json.dumps({"checklists": templates}, indent=2))
+        return 0
+    if args.inspection_action == "create":
+        inspection = create_inspection(
+            args.assessment_id, args.asset_id, args.device_ip, args.inspector,
+            inspected_at=args.inspected_at,
+        )
+        path = write_inspection_json(inspection, args.output)
+        print(f"Inspection created: {path}")
+        print(f"Inspection ID: {inspection['inspection_id']}")
+        print(f"Checklist checks: {sum(len(item['checks']) for item in CHECKLISTS.values())}")
+        return 0
+    inspection = _read_inspection(args.input)
+    if args.inspection_action == "record":
+        response = record_check(
+            inspection, args.category, args.check, args.status,
+            notes=args.notes, evidence_refs=args.evidence_ref,
+            reviewed_at=args.reviewed_at,
+        )
+        path = write_inspection_json(inspection, args.output or args.input)
+        print(f"Recorded {response['status']} for {response['category_id']}/{response['check_id']}.")
+        print(f"Inspection JSON: {path}")
+        return 0
+    if args.inspection_action == "validate":
+        validate_inspection(inspection, require_complete=args.require_complete)
+        print(json.dumps({
+            "valid": True,
+            "complete_required": args.require_complete,
+            "summary": inspection_summary(inspection),
+        }, indent=2))
+        return 0
+    raise ValueError("Unknown inspection action.")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "inspection":
+            return _run_inspection(args)
         if args.command == "scan":
             result = scan_network(args.cidr, args.authorized, args.timeout, args.workers)
             apply_risk_scores(result)
@@ -183,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
             _write_all(result, args.output_dir)
             print(f"Assessment complete: {len(result['assets'])} inventory records, {len(result['findings'])} matched findings.")
             return 0
-    except (ScopeError, AdvisoryIngestionError, OSError, ValueError, KeyError, TypeError) as exc:
+    except (ScopeError, AdvisoryIngestionError, OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
         print(f"CamGuard error: {exc}", file=sys.stderr)
         return 2
     return 1
