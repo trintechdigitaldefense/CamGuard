@@ -247,6 +247,7 @@ The project targets Python 3.10+. Run tests with synthetic data; never use real 
 
 ## Roadmap
 
+- **Proposed for 0.6.0:** evidence-based service exposure observations for authorized private CCTV/NVR networks. See the [0.6.0 design specification](docs/roadmap/0.6.0-service-exposure-assessment.md). This is a planned feature, not part of the current release.
 - Guided camera/NVR configuration-hardening checklist.
 - Finding lifecycle, remediation evidence and historical comparisons.
 - Optional client-approved monitoring and alerting.
