@@ -28,6 +28,8 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--timeout", type=float, default=0.8, help="Per-port TCP timeout (0.1–2.0 seconds).")
     scan.add_argument("--workers", type=int, default=16, help="Concurrent hosts (1–32).")
     scan.add_argument("--output-dir", default="reports", help="Directory for JSON, Markdown and PDF reports.")
+    scan.add_argument("--assessment-id", help="Assessment identifier used to link technician inspection records.")
+    scan.add_argument("--inspection", action="append", default=[], help="Inspection JSON to attach to this report; repeat for multiple assets.")
 
     metadata = sub.add_parser("metadata", help="Collect minimal unauthenticated HTTPS metadata from an explicit approved IP allowlist.")
     metadata.add_argument("--targets", required=True, help="Text file with one approved RFC1918 IPv4 address per line.")
@@ -84,6 +86,8 @@ def build_parser() -> argparse.ArgumentParser:
     assess.add_argument("--inbox", help="Current pending advisory inbox used to verify approvals.")
     assess.add_argument("--audit", help="Hash-chained analyst review audit log.")
     assess.add_argument("--output-dir", default="reports", help="Directory for assessment reports.")
+    assess.add_argument("--assessment-id", help="Assessment identifier used to link technician inspection records.")
+    assess.add_argument("--inspection", action="append", default=[], help="Inspection JSON to attach to this report; repeat for multiple assets.")
 
     inspection = sub.add_parser("inspection", help="Create and manage manual technician-assisted CCTV inspection records.")
     inspection_actions = inspection.add_subparsers(dest="inspection_action", required=True)
@@ -122,6 +126,29 @@ def _write_all(result, output_dir):
     print(f"JSON report: {json_path}")
     print(f"Markdown report: {md_path}")
     print(f"PDF report: {pdf_path}")
+
+
+def _load_attached_inspections(paths: list[str], assets: list[dict], assessment_id: str | None):
+    """Load technician records and bind them to assets in this assessment."""
+    if not paths:
+        return []
+    from .inspection import validate_inspection
+
+    if not assessment_id:
+        raise ValueError("--assessment-id is required when attaching --inspection records.")
+    known_ips = {asset.get("ip") for asset in assets}
+    inspections = []
+    for path in paths:
+        inspection = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(inspection, dict):
+            raise ValueError(f"Inspection file must contain a JSON object: {path}")
+        validate_inspection(inspection, require_complete=False)
+        if inspection.get("assessment_id") != assessment_id:
+            raise ValueError(f"Inspection assessment_id does not match --assessment-id: {path}")
+        if inspection.get("device_ip") not in known_ips:
+            raise ValueError(f"Inspection device_ip is not present in this assessment inventory: {path}")
+        inspections.append(inspection)
+    return inspections
 
 
 def _read_inspection(path: str):
@@ -183,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
             return _run_inspection(args)
         if args.command == "scan":
             result = scan_network(args.cidr, args.authorized, args.timeout, args.workers)
+            result["inspections"] = _load_attached_inspections(args.inspection, result["assets"], args.assessment_id)
             apply_risk_scores(result)
             _write_all(result, args.output_dir)
             print(f"Assessment complete: {len(result['assets'])} responsive assets, {len(result['findings'])} findings.")
@@ -262,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
                 ],
             }
             result = enrich_assets(result, inventory, advisories)
+            result["inspections"] = _load_attached_inspections(args.inspection, result["assets"], args.assessment_id)
             apply_risk_scores(result)
             _write_all(result, args.output_dir)
             print(f"Assessment complete: {len(result['assets'])} inventory records, {len(result['findings'])} matched findings.")
