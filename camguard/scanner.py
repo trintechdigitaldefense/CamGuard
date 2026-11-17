@@ -12,12 +12,12 @@ from .service_exposure import observe_service, unreachable_observation
 from . import __version__
 
 CAMERA_PORTS: dict[int, str] = {
-    80: "HTTP management (port hint only)",
-    443: "HTTPS management (port hint only)",
-    554: "RTSP (port hint only; no stream access)",
-    8000: "Vendor service (port hint only)",
-    8080: "Alternate HTTP (port hint only)",
-    8443: "Alternate HTTPS (port hint only)",
+    80: "HTTP management",
+    443: "HTTPS management",
+    554: "RTSP service (port only; no stream access)",
+    8000: "Vendor service (varies by vendor)",
+    8080: "Alternate HTTP management",
+    8443: "Alternate HTTPS management",
     8899: "Vendor service (port hint only)",
     34567: "Vendor service (port hint only)",
     37777: "Vendor service (port hint only)",
@@ -134,6 +134,7 @@ def scan_network(cidr: str, authorized: bool, timeout: float = 0.8, workers: int
                 "observed_at": host_result["observed_at"],
             })
             service_observations.append(observation)
+    service_observations.sort(key=lambda item: (ipaddress.ip_address(item['device_ip']), item['port']))
 
     return {
         "tool": "TrinTech CamGuard",
