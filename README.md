@@ -164,7 +164,19 @@ Require all 30 checks to have a response before finalizing the field record:
 camguard inspection validate --input "inspections/camera-04.json" --require-complete
 ```
 
-A complete inspection can then be attached to an assessment result by the reporting integration. Keep inspection JSON and evidence references in the client's approved storage; do not commit client records to the public repository. Evidence references must point to operator-managed records, not contain passwords, tokens, private keys, cookies or raw video. Technician responses are not independently verified by CamGuard.
+Attach one or more inspection files to an offline inventory assessment. The assessment ID must match every inspection, and each inspection device IP must exist in the supplied inventory:
+
+```bash
+camguard assess \
+  --inventory inventory.json \
+  --assessment-id "client-job-2026-014" \
+  --inspection "inspections/camera-04.json" \
+  --output-dir reports
+```
+
+The same `--assessment-id` and repeatable `--inspection` options are available on `camguard scan` when attaching records to an authorized network scan report. Reports then include the attached technician observations and completion summary.
+
+Keep inspection JSON and evidence references in the client's approved storage; do not commit client records to the public repository. Evidence references must point to operator-managed records, not contain passwords, tokens, private keys, cookies or raw video. Technician responses are not independently verified by CamGuard.
 
 ## Vulnerability intelligence and analyst review
 
