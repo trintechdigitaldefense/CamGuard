@@ -66,6 +66,35 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
         ]
         details.extend(f"<b>Limitation:</b> {safe(item)}" for item in obs.get("limitations", []))
         story.append(KeepTogether([Paragraph(heading, styles["Heading4"]), Paragraph("<br/>".join(details), styles["Small"]), Spacer(1, 5)]))
+    story.append(Paragraph("Technician-assisted inspections", styles["Section"]))
+    inspections = result.get("inspections", [])
+    if not inspections:
+        story.append(Paragraph("No technician-assisted inspection records were attached.", styles["BodyText"]))
+    for inspection in inspections:
+        from .inspection import inspection_summary, validate_inspection
+        validate_inspection(inspection, require_complete=False)
+        summary = inspection_summary(inspection)
+        story.append(Paragraph(safe(f"{inspection.get('device_ip', 'Unknown device')} — {inspection.get('asset_id', 'Unlinked asset')}"), styles["Heading4"]))
+        overview = [
+            f"<b>Inspector:</b> {safe(inspection.get('inspector', 'Not recorded'))}",
+            f"<b>Inspected at:</b> {safe(inspection.get('inspected_at', 'Not recorded'))}",
+            f"<b>Checklist completion:</b> {summary['completed_checks']} / {summary['total_checks']}",
+            f"<b>Results:</b> Pass {summary['pass']}; Fail {summary['fail']}; Needs attention {summary['needs_attention']}; Not verified {summary['not_verified']}; Not applicable {summary['not_applicable']}",
+        ]
+        story.append(Paragraph("<br/>".join(overview), styles["Small"]))
+        for response in inspection.get("responses", []):
+            detail = [
+                f"<b>{safe(response['category'])} / {safe(response['check_id'])} — {safe(response['status'].replace('_', ' ').title())}</b>",
+                safe(response["question"]),
+            ]
+            if response.get("notes"):
+                detail.append("<b>Notes:</b> " + safe(response["notes"]))
+            if response.get("evidence_refs"):
+                detail.append("<b>Evidence references:</b> " + safe(", ".join(response["evidence_refs"])))
+            story.append(Paragraph("<br/>".join(detail), styles["Small"]))
+        for limitation in inspection.get("limitations", []):
+            story.append(Paragraph("• " + safe(limitation), styles["Tiny"]))
+        story.append(Spacer(1, 6))
     story.append(Paragraph("Findings and recommended actions", styles["Section"]))
     findings = result.get("findings", [])
     if not findings:
