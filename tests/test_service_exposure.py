@@ -49,5 +49,27 @@ class ServiceExposureTests(unittest.TestCase):
         self.assertEqual(result["encryption_status"], "unknown")
 
 
+    def test_tls_handshake_confirms_tls_but_not_certificate_trust(self):
+        raw = FakeSocket(b"")
+
+        class Secured:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def version(self): return "TLSv1.3"
+            def cipher(self): return ("TLS_AES_128_GCM_SHA256", "TLSv1.3", 128)
+
+        class Context:
+            check_hostname = True
+            verify_mode = None
+            def wrap_socket(self, sock, server_hostname=None): return Secured()
+
+        with patch("camguard.service_exposure.socket.create_connection", return_value=raw), patch(
+            "camguard.service_exposure.ssl.SSLContext", return_value=Context()
+        ):
+            result = observe_service("192.168.1.10", 443)
+        self.assertEqual(result["encryption_status"], "confirmed_tls")
+        self.assertIn("Certificate trust was not evaluated", result["encryption_evidence"])
+
+
 if __name__ == "__main__":
     unittest.main()
