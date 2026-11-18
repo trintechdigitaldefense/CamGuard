@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trintech-camguard"
-version = "0.5.0rc1"
+version = "0.7.0"
 description = "Authorized, read-only CCTV and IP camera security assessment with analyst-gated vulnerability intelligence and explainable risk reports"
 readme = "README.md"
 requires-python = ">=3.10"

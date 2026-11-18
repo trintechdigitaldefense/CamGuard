@@ -5,10 +5,10 @@
 CamGuard is a defensive assessment tool from **TrinTech Digital Defense**. It helps authorized security teams inventory reachable CCTV/NVR services, organize verified device information, correlate exact device and firmware identities with analyst-approved vulnerability intelligence, and produce explainable assessment reports.
 
 <blockquote>
-<strong>Current release:</strong> <code>0.5.0rc1</code> — public GitHub prerelease, not a stable 0.5.0 release.
+<strong>Current release:</strong> <code>0.7.0</code> — stable GitHub release.
 </blockquote>
 
-- **Release and wheel:** [CamGuard 0.5.0rc1](https://github.com/trintechdigitaldefense/CamGuard/releases/tag/0.5.0rc1)
+- **Release and wheel:** [CamGuard 0.7.0](https://github.com/trintechdigitaldefense/CamGuard/releases/tag/0.7.0)
 - **Source code:** [GitHub repository](https://github.com/trintechdigitaldefense/CamGuard)
 - **Business:** [TrinTech Digital Defense](https://trintechdigitaldefense.github.io)
 
@@ -41,12 +41,12 @@ CamGuard is deliberately conservative:
 - Vulnerability matching requires verified inventory and exact CPE plus firmware equality against analyst-approved records.
 - A CVE match is a lead for analyst validation, not proof of exploitability or compromise.
 
-## Install CamGuard 0.5.0rc1
+## Install CamGuard 0.7.0
 
-**Recommended: install the published wheel.** Download `trintech_camguard-0.5.0rc1-py3-none-any.whl` from the [GitHub release](https://github.com/trintechdigitaldefense/CamGuard/releases/tag/0.5.0rc1), then run:
+**Recommended: install the published wheel.** Download `trintech_camguard-0.7.0-py3-none-any.whl` from the [GitHub release](https://github.com/trintechdigitaldefense/CamGuard/releases/tag/0.7.0), then run:
 
 ```bash
-python -m pip install ./trintech_camguard-0.5.0rc1-py3-none-any.whl
+python -m pip install ./trintech_camguard-0.7.0-py3-none-any.whl
 camguard --help
 ```
 
@@ -117,7 +117,7 @@ camguard assess \
 CamGuard validates analyst decisions against the current pending inbox and hash-chained audit log, then loads a temporary validated advisory export. Supplying only one or two of the three review inputs is rejected. Assessment itself makes no external API calls or network probes.
 
 
-### 4. Technician-assisted camera/NVR inspection (0.7.0 development)
+### 4. Technician-assisted camera/NVR inspection (0.7.0)
 
 The technician inspection workflow is manual and records observations made under the client's approved procedures. It does not log in to devices, test passwords, retrieve configuration or video, or change device settings.
 
@@ -174,7 +174,7 @@ camguard assess \
   --output-dir reports
 ```
 
-The same `--assessment-id` and repeatable `--inspection` options are available on `camguard scan` when attaching records to an authorized network scan report. Reports then include the attached technician observations and completion summary.
+The same `--assessment-id` and repeatable `--inspection` options are available on `camguard scan` when attaching records to an authorized network scan report. Reports then include the attached technician observations and completion summary. The assessment ID and device IP are checked against the assessment; the technician-supplied asset ID is retained as a reference and is not independently verified against inventory.
 
 Keep inspection JSON and evidence references in the client's approved storage; do not commit client records to the public repository. Evidence references must point to operator-managed records, not contain passwords, tokens, private keys, cookies or raw video. Technician responses are not independently verified by CamGuard.
 
@@ -309,8 +309,8 @@ The project targets Python 3.10+. Run tests with synthetic data; never use real 
 
 ## Roadmap
 
-- **0.6.0 development:** initial evidence-based service exposure observations are implemented on the [development pull request](https://github.com/trintechdigitaldefense/CamGuard/pull/10). See the [design and implementation notes](docs/roadmap/0.6.0-service-exposure-assessment.md). This work is not included in the published 0.5.0rc1 release.
-- **0.7.0 development:** technician-assisted inspection data model, six CCTV security checklists, evidence-reference handling and inspection report integration are being developed on a separate feature branch. See [the 0.7.0 inspection specification](docs/roadmap/0.7.0-technician-assisted-inspection.md). Not part of the published 0.5.0rc1 release.
+- **0.6.0 service exposure:** merged into `main` through [PR #10](https://github.com/trintechdigitaldefense/CamGuard/pull/10), included in this release. See the [design and implementation notes](docs/roadmap/0.6.0-service-exposure-assessment.md).
+- **0.7.0 technician-assisted inspection:** merged through [PR #11](https://github.com/trintechdigitaldefense/CamGuard/pull/11), including six CCTV security checklists, evidence-reference handling and inspection report integration. See [the 0.7.0 inspection specification](docs/roadmap/0.7.0-technician-assisted-inspection.md).
 - Guided camera/NVR configuration-hardening checklist.
 - Finding lifecycle, remediation evidence and historical comparisons.
 - Optional client-approved monitoring and alerting.
