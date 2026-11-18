@@ -7,19 +7,19 @@ from pathlib import Path
 from typing import Any
 
 
-_MARKDOWN_SPECIAL = re.compile(r"([\\`*_{}\\[\\]()#+.!|>~-])")
 _SENSITIVE = re.compile(
-    r"(?i)\\b(password|passwd|pwd|token|access[_-]?token|refresh[_-]?token|"
-    r"api[_-]?key|secret|authorization)\\b(\\s*[:=]\\s*)([^\\s,;]+)"
+    r"(?i)\b(password|passwd|pwd|token|access[_-]?token|refresh[_-]?token|"
+    r"api[_-]?key|secret|authorization)\b(\s*[:=]\s*)([^\s,;]+)"
 )
+_MARKDOWN_SPECIAL = set("\\\`*_{}[]()#+.!|>~-")
 
 
 def _safe_markdown(value: Any) -> str:
-    """Escape untrusted text and redact common key/value secret patterns."""
+    """Redact common key/value secrets and escape untrusted Markdown text."""
     text = str(value)
-    text = _SENSITIVE.sub(lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]", text)
-    text = _MARKDOWN_SPECIAL.sub(r"\\\\\\1", text)
-    return text.replace("\\r", " ").replace("\\n", " ")
+    text = _SENSITIVE.sub(lambda m: f"{m.group(1)}{m.group(2)}[REDACTED]", text)
+    text = text.replace("\r", " ").replace("\n", " ")
+    return "".join(("\\" + char) if char in _MARKDOWN_SPECIAL else char for char in text)
 
 
 def write_reports(result: dict[str, Any], output_dir: str) -> tuple[Path, Path]:
@@ -91,5 +91,5 @@ def write_reports(result: dict[str, Any], output_dir: str) -> tuple[Path, Path]:
         lines += [f"- Limitation: {_safe_markdown(item)}" for item in method.get("limitations", [])]
     lines += ["", "## Limitations"] + [f"- {_safe_markdown(item)}" for item in result["limitations"]]
     lines += ["", "> This report reflects only the assessment method and evidence described above. It is not proof of compromise, exploitability, or safety.", ""]
-    md_path.write_text("\\n".join(lines), encoding="utf-8")
+    md_path.write_text("\n".join(lines), encoding="utf-8")
     return json_path, md_path
