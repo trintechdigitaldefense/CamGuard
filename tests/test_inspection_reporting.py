@@ -36,7 +36,7 @@ class InspectionReportIntegrationTests(unittest.TestCase):
             self.assertNotIn("<script>", markdown)
             self.assertNotIn("**untrusted**", markdown)
             self.assertIn(r"\<img", markdown)
-            self.assertNotIn("<img", markdown)
+            self.assertNotIn("Evidence references: evidence://case-1/<img", markdown)
             self.assertIn("Not verified", markdown)
 
     def test_pdf_escapes_untrusted_inspection_text(self):
