@@ -11,7 +11,7 @@ _SENSITIVE = re.compile(
     r"(?i)\b(password|passwd|pwd|token|access[_-]?token|refresh[_-]?token|"
     r"api[_-]?key|secret|authorization)\b(\s*[:=]\s*)([^\s,;]+)"
 )
-_MARKDOWN_SPECIAL = set("\\\`*_{}[]()#+.!|>~-")
+_MARKDOWN_SPECIAL = set("\\\`*_{}[]()#+!|><")
 
 
 def _safe_markdown(value: Any) -> str:
@@ -19,7 +19,7 @@ def _safe_markdown(value: Any) -> str:
     text = str(value)
     text = _SENSITIVE.sub(lambda m: f"{m.group(1)}{m.group(2)}CAMGUARDREDACTEDTOKEN", text)
     text = text.replace("\r", " ").replace("\n", " ")
-    return "".join(("\\" + char) if char in _MARKDOWN_SPECIAL else char for char in text)
+    return "".join(("\\" + char) if char in _MARKDOWN_SPECIAL else char for char in text).replace("CAMGUARDREDACTEDTOKEN", "[REDACTED]")
 
 
 def write_reports(result: dict[str, Any], output_dir: str) -> tuple[Path, Path]:
