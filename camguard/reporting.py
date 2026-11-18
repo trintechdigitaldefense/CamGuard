@@ -17,7 +17,7 @@ _MARKDOWN_SPECIAL = set("\\\`*_{}[]()#+.!|>~-")
 def _safe_markdown(value: Any) -> str:
     """Redact common key/value secrets and escape untrusted Markdown text."""
     text = str(value)
-    text = _SENSITIVE.sub(lambda m: f"{m.group(1)}{m.group(2)}[REDACTED]", text)
+    text = _SENSITIVE.sub(lambda m: f"{m.group(1)}{m.group(2)}CAMGUARDREDACTEDTOKEN", text)
     text = text.replace("\r", " ").replace("\n", " ")
     return "".join(("\\" + char) if char in _MARKDOWN_SPECIAL else char for char in text)
 
