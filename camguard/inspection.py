@@ -11,9 +11,11 @@ from pathlib import Path
 import re
 from typing import Any
 
+from .reporting import redact_sensitive
+
 SCHEMA_VERSION = "1.0"
 STATUSES = {"pass", "fail", "not_verified", "not_applicable", "needs_attention"}
-SENSITIVE_TEXT = re.compile(r"(?i)(password|passwd|bearer)\s*[:=]\s*\S+|-----BEGIN (?:RSA |EC )?PRIVATE KEY-----")
+SENSITIVE_TEXT = re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.IGNORECASE)
 
 CHECKLISTS: dict[str, dict[str, Any]] = {
     "account_permissions": {"title": "Account permissions", "checks": [
@@ -82,7 +84,7 @@ def _safe_text(value: Any, field: str, *, required: bool = False, limit: int = 2
         raise ValueError(f"{field} is required.")
     if len(value) > limit:
         raise ValueError(f"{field} exceeds {limit} characters.")
-    if SENSITIVE_TEXT.search(value):
+    if SENSITIVE_TEXT.search(value) or redact_sensitive(value) != value:
         raise ValueError(f"{field} appears to contain a secret; store evidence references, never credentials.")
     return value
 
@@ -149,27 +151,42 @@ def validate_inspection(inspection: dict[str, Any], *, require_complete: bool = 
     if not isinstance(responses, list):
         raise ValueError("responses must be a list.")
     seen: set[tuple[str, str]] = set()
+    if len(responses) > sum(len(v["checks"]) for v in CHECKLISTS.values()):
+        raise ValueError("responses contains more entries than the checklist permits.")
     for response in responses:
         if not isinstance(response, dict):
             raise ValueError("Each response must be an object.")
-        key = (response.get("category_id"), response.get("check_id"))
+        category_id = response.get("category_id")
+        check_id = response.get("check_id")
+        if not isinstance(category_id, str) or not isinstance(check_id, str):
+            raise ValueError("Response category_id and check_id must be text.")
+        key = (category_id, check_id)
         if key in seen:
             raise ValueError("Duplicate checklist response.")
         seen.add(key)
-        if key[0] not in CHECKLISTS or key[1] not in dict(CHECKLISTS[key[0]]["checks"]):
+        if category_id not in CHECKLISTS or check_id not in dict(CHECKLISTS[category_id]["checks"]):
             raise ValueError("Response references an unknown checklist item.")
         if response.get("status") not in STATUSES:
             raise ValueError("Response contains an invalid status.")
+        expected_question = dict(CHECKLISTS[category_id]["checks"])[check_id]
+        if response.get("category") != CHECKLISTS[category_id]["title"] or response.get("question") != expected_question:
+            raise ValueError("Response category or question does not match the checklist definition.")
         _safe_text(response.get("notes", ""), "notes")
+        _safe_text(response.get("reviewed_at"), "reviewed_at", required=True, limit=64)
         refs = response.get("evidence_refs", [])
-        if not isinstance(refs, list):
-            raise ValueError("evidence_refs must be a list.")
+        if not isinstance(refs, list) or len(refs) > 20:
+            raise ValueError("evidence_refs must be a list containing at most 20 references.")
         for ref in refs:
             _safe_text(ref, "evidence reference", required=True, limit=512)
         if response["status"] in {"pass", "fail"} and not refs:
             raise ValueError("Pass and Fail responses require evidence references.")
         if response["status"] in {"not_applicable", "needs_attention"} and not response.get("notes", "").strip():
             raise ValueError(f"{response['status']} responses require explanatory notes.")
+    limitations = inspection.get("limitations", [])
+    if not isinstance(limitations, list) or len(limitations) > 20:
+        raise ValueError("limitations must be a list containing at most 20 entries.")
+    for limitation in limitations:
+        _safe_text(limitation, "limitation", limit=1000)
     if require_complete and len(seen) != sum(len(v["checks"]) for v in CHECKLISTS.values()):
         raise ValueError("Inspection is incomplete; every checklist item needs a response.")
 
