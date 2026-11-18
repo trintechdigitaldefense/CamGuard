@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-_MARKDOWN_SPECIAL = re.compile(r"([\\\\`*_{}\\[\\]()#+.!|>~-])")
+_MARKDOWN_SPECIAL = re.compile(r"([\\`*_{}\\[\\]()#+.!|>~-])")
 _SENSITIVE = re.compile(
     r"(?i)\\b(password|passwd|pwd|token|access[_-]?token|refresh[_-]?token|"
     r"api[_-]?key|secret|authorization)\\b(\\s*[:=]\\s*)([^\\s,;]+)"
