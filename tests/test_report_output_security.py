@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from camguard import pdf_report
-from camguard.reporting import _safe_markdown, redact_sensitive, write_reports
+from camguard.reporting import _safe_markdown, redact_sensitive, sanitize_sensitive_data, write_reports
 
 
 class ReportOutputSecurityTests(unittest.TestCase):
@@ -46,6 +46,52 @@ class ReportOutputSecurityTests(unittest.TestCase):
         self.assertIn(r"\<img", text)
         self.assertNotIn("secret123", text)
         self.assertIn("api\\_key=[REDACTED]", text)
+
+
+    def test_redaction_handles_bearer_basic_and_quoted_multword_values(self):
+        samples = [
+            ("Authorization: Bearer eyJhbGciOi.secret-token", "Authorization: [REDACTED]"),
+            ("authorization=Basic dXNlcjpwYXNz", "authorization=[REDACTED]"),
+            ('password="two words of secret"', "password=[REDACTED]"),
+            ("client_secret='multi word value'", "client_secret=[REDACTED]"),
+            ('api_key: "key with spaces"', "api_key: [REDACTED]"),
+        ]
+        for raw, expected in samples:
+            with self.subTest(raw=raw):
+                self.assertEqual(redact_sensitive(raw), expected)
+
+    def test_json_report_recursively_redacts_sensitive_fields_and_embedded_values(self):
+        result = {
+            "generated_at": "2026-11-18T12:00:00Z",
+            "version": "0.6.0",
+            "scope": {"cidr": "192.168.1.0/24", "addresses_considered": 1},
+            "scan_type": "authorized token=embedded-secret",
+            "assets": [],
+            "findings": [],
+            "service_observations": [{
+                "device_ip": "192.168.1.10",
+                "metadata": {
+                    "password": "plain-secret",
+                    "nested": [{"api_key": "key-secret"}],
+                    "note": "Authorization: Bearer bearer-secret",
+                    "comment": 'client_secret="quoted multi word secret"',
+                },
+            }],
+            "limitations": [],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            json_path, _ = write_reports(result, tmp)
+            import json
+            output = json.loads(json_path.read_text(encoding="utf-8"))
+        metadata = output["service_observations"][0]["metadata"]
+        self.assertEqual(metadata["password"], "[REDACTED]")
+        self.assertEqual(metadata["nested"][0]["api_key"], "[REDACTED]")
+        self.assertEqual(metadata["note"], "Authorization: [REDACTED]")
+        self.assertEqual(metadata["comment"], "client_secret=[REDACTED]")
+        self.assertEqual(output["scan_type"], "authorized token=[REDACTED]")
+        serialized = json.dumps(output)
+        for secret in ("plain-secret", "key-secret", "bearer-secret", "quoted multi word secret", "embedded-secret"):
+            self.assertNotIn(secret, serialized)
 
     def test_pdf_dynamic_paragraph_content_is_escaped_before_parsing(self):
         malicious = "<b>Injected</b><img src=x onerror=alert(1)> token=private123 api_key=secret123 password=hidden456"
