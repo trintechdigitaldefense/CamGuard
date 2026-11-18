@@ -9,7 +9,7 @@ from typing import Any
 HTTP_PORTS = {80, 8080}
 TLS_PORTS = {443, 8443}
 MAX_RESPONSE_LINE = 512
-_HTTP_STATUS = re.compile(rb"^HTTP/(?:1\\.0|1\\.1) ([1-5][0-9]{2})(?:[ \\t].*)?$")
+_HTTP_STATUS = re.compile(rb"^HTTP/(?:1\.0|1\.1) ([1-5][0-9]{2})(?:[ \t].*)?$")
 
 
 def _base(ip: str, port: int) -> dict[str, Any]:
@@ -47,8 +47,8 @@ def _read_status_line(sock: socket.socket) -> bytes:
         chunk = sock.recv(1)
         if not chunk:
             return b""
-        if chunk == b"\\n":
-            return bytes(data) if data.endswith(b"\\r") else b""
+        if chunk == b"\n":
+            return bytes(data) if data.endswith(b"\r") else b""
         data.extend(chunk)
     return b""
 
@@ -64,7 +64,7 @@ def observe_service(ip: str, port: int, timeout: float = 0.8) -> dict[str, Any]:
         raw.settimeout(timeout)
         if port in HTTP_PORTS:
             with raw:
-                raw.sendall(f"HEAD / HTTP/1.0\\r\\nHost: {ip}\\r\\nConnection: close\\r\\n\\r\\n".encode("ascii"))
+                raw.sendall(f"HEAD / HTTP/1.0\r\nHost: {ip}\r\nConnection: close\r\n\r\n".encode("ascii"))
                 line = _read_status_line(raw)
             match = _HTTP_STATUS.fullmatch(line)
             if match:
