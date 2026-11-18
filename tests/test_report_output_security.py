@@ -48,11 +48,12 @@ class ReportOutputSecurityTests(unittest.TestCase):
         self.assertIn("api\\_key=[REDACTED]", text)
 
     def test_pdf_dynamic_paragraph_content_is_escaped_before_parsing(self):
-        malicious = "<b>Injected</b><img src=x onerror=alert(1)> token=private123"
+        malicious = "<b>Injected</b><img src=x onerror=alert(1)> token=private123 api_key=secret123 password=hidden456"
         result = {
             "generated_at": "2026-11-17T12:00:00Z",
             "version": "0.6.0",
             "scope": {"cidr": "192.168.1.0/24"},
+            "scan_type": "authorized scan token=table-secret",
             "assets": [],
             "findings": [],
             "service_observations": [{
@@ -68,11 +69,16 @@ class ReportOutputSecurityTests(unittest.TestCase):
         }
         seen = []
         real_paragraph = pdf_report.Paragraph
+        real_table = pdf_report.Table
         def capture(text, style, *args, **kwargs):
             seen.append(str(text))
             return real_paragraph(text, style, *args, **kwargs)
+        def capture_table(data, *args, **kwargs):
+            seen.extend(str(cell) for row in data for cell in row)
+            return real_table(data, *args, **kwargs)
         with tempfile.TemporaryDirectory() as tmp:
-            with patch("camguard.pdf_report.Paragraph", side_effect=capture):
+            with patch("camguard.pdf_report.Paragraph", side_effect=capture), \\
+                 patch("camguard.pdf_report.Table", side_effect=capture_table):
                 output = pdf_report.write_pdf_report(result, Path(tmp) / "report.pdf")
             self.assertTrue(output.exists())
             self.assertGreater(output.stat().st_size, 0)
@@ -83,7 +89,12 @@ class ReportOutputSecurityTests(unittest.TestCase):
         self.assertIn("&lt;img", dynamic)
         self.assertIn("token=[REDACTED]", dynamic)
         self.assertNotIn("private123", dynamic)
-        self.assertNotIn("api_key=secret123", dynamic)
+        self.assertNotIn("secret123", dynamic)
+        self.assertNotIn("hidden456", dynamic)
+        self.assertNotIn("table-secret", dynamic)
+        self.assertIn("token=[REDACTED]", dynamic)
+        self.assertIn("api_key=[REDACTED]", dynamic)
+        self.assertIn("password=[REDACTED]", dynamic)
 
 
 
