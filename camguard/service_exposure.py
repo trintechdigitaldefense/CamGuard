@@ -59,8 +59,10 @@ def observe_service(ip: str, port: int, timeout: float = 0.8) -> dict[str, Any]:
     if port not in HTTP_PORTS | TLS_PORTS:
         return result
     raw = None
+    connected = False
     try:
         raw = socket.create_connection((ip, port), timeout=timeout)
+        connected = True
         raw.settimeout(timeout)
         if port in HTTP_PORTS:
             with raw:
@@ -100,8 +102,13 @@ def observe_service(ip: str, port: int, timeout: float = 0.8) -> dict[str, Any]:
                 "limitations": ["Certificate trust, application identity, authentication and encryption of other services or video streams were not verified."],
             })
     except (socket.timeout, TimeoutError):
-        result["service_evidence"] = "Protocol identification timed out; no protocol conclusion was reached."
-        result["encryption_evidence"] = "No conclusion about encryption can be drawn because the protocol probe timed out."
+        if not connected:
+            result["reachability"] = "error"
+            result["service_evidence"] = "TCP connection timed out before the endpoint was reached; no protocol probe was attempted."
+            result["encryption_evidence"] = "Encryption could not be assessed because the TCP connection timed out."
+        else:
+            result["service_evidence"] = "Protocol identification timed out; no protocol conclusion was reached."
+            result["encryption_evidence"] = "No conclusion about encryption can be drawn because the protocol probe timed out."
     except ssl.SSLError:
         result["service_evidence"] = "TLS handshake failed; protocol identification is inconclusive."
         result["encryption_evidence"] = "A TLS handshake was not completed; encryption was not confirmed."
