@@ -63,12 +63,7 @@ class ServiceExposureTests(unittest.TestCase):
         self.assertIn("Certificate trust was not evaluated", result["encryption_evidence"])
 
     def test_tls_timeout_is_inconclusive(self):
-        raw = FakeSocket()
-        class Context:
-            check_hostname = True
-            verify_mode = None
-            def wrap_socket(self, sock, server_hostname=None): raise socket.timeout()
-        with patch("camguard.service_exposure.socket.create_connection", return_value=raw), patch("camguard.service_exposure.ssl.SSLContext", return_value=Context()):
+        with patch("camguard.service_exposure.socket.create_connection", side_effect=TimeoutError):
             result = observe_service("192.168.1.10", 443)
         self.assertEqual(result["encryption_status"], "unknown")
         self.assertEqual(result["reachability"], "error")
