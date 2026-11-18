@@ -9,8 +9,13 @@ on:
       - "camguard/advisory_ingest.py"
       - "camguard/advisory_review.py"
       - "camguard/cli.py"
+      - "camguard/service_exposure.py"
+      - "camguard/reporting.py"
+      - "camguard/pdf_report.py"
       - "tests/test_advisory_ingest.py"
       - "tests/test_advisory_review.py"
+      - "tests/test_service_exposure.py"
+      - "tests/test_report_output_security.py"
 
 permissions:
   contents: read
