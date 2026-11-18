@@ -7,21 +7,49 @@ from pathlib import Path
 from typing import Any
 
 
-_SENSITIVE = re.compile(
-    r"(?i)\b(password|passwd|pwd|token|access[_-]?token|refresh[_-]?token|"
-    r"api[_-]?key|secret|authorization)\b(\s*[:=]\s*)([^\s,;]+)"
+_SENSITIVE_KEYS = {
+    "password", "passwd", "pwd", "token", "accesstoken", "refreshtoken",
+    "apikey", "secret", "clientsecret", "authorization", "privatekey",
+    "cookie", "setcookie",
+}
+_SENSITIVE_KEY_PATTERN = re.compile(
+    r"(?i)\b(password|passwd|pwd|access[_-]?token|refresh[_-]?token|"
+    r"api[_-]?key|client[_-]?secret|private[_-]?key|set-cookie|"
+    r"token|secret|authorization|cookie)\b(\s*[:=]\s*)"
+    r'(?:"(?:\\.|[^"\\])*"|\x27(?:\\.|[^\x27\\])*\x27|'
+    r"(?:Bearer|Basic)\s+[^\s,;]+|[^\s,;]+)"
 )
-_MARKDOWN_SPECIAL = set("\\`*_{}[]()#+!|><")
+_MARKDOWN_SPECIAL = set("\\\`*_{}[]()#+!|><")
+
+
+def _is_sensitive_key(key: Any) -> bool:
+    normalized = re.sub(r"[^a-z0-9]", "", str(key).lower())
+    return normalized in _SENSITIVE_KEYS
 
 
 def redact_sensitive(value: Any) -> str:
-    """Redact common secret-like key/value values before report rendering."""
-    text = str(value)
-    return _SENSITIVE.sub(
+    """Redact common secret-like key/value pairs, including quoted and auth values."""
+    return _SENSITIVE_KEY_PATTERN.sub(
         lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]",
-        text,
+        str(value),
     )
 
+
+def sanitize_sensitive_data(value: Any) -> Any:
+    """Recursively redact sensitive mapping values and embedded secret patterns."""
+    if isinstance(value, dict):
+        return {
+            key: "[REDACTED]" if _is_sensitive_key(key)
+            else sanitize_sensitive_data(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [sanitize_sensitive_data(item) for item in value]
+    if isinstance(value, tuple):
+        return [sanitize_sensitive_data(item) for item in value]
+    if isinstance(value, str):
+        return redact_sensitive(value)
+    return value
 
 def _safe_markdown(value: Any) -> str:
     """Redact common key/value secrets and escape untrusted Markdown text."""
@@ -37,7 +65,7 @@ def write_reports(result: dict[str, Any], output_dir: str) -> tuple[Path, Path]:
     stamp = result["generated_at"].replace(":", "").replace("-", "").replace(".", "")
     json_path = folder / f"camguard-{stamp}.json"
     md_path = folder / f"camguard-{stamp}.md"
-    json_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    json_path.write_text(json.dumps(sanitize_sensitive_data(result), indent=2), encoding="utf-8")
     lines = [
         "# TrinTech CamGuard Assessment", "",
         f"- Generated: {_safe_markdown(result['generated_at'])}",
