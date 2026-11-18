@@ -43,7 +43,7 @@ class ReportOutputSecurityTests(unittest.TestCase):
         self.assertNotIn("<img", text)
         self.assertNotIn("onerror", text)
         self.assertNotIn("secret123", text)
-        self.assertIn("api\\_key=\\[REDACTED\\]", text)
+        self.assertIn("api\\_key=[REDACTED]", text)
 
     def test_pdf_dynamic_paragraph_content_is_escaped_before_parsing(self):
         malicious = "<b>Injected</b><img src=x onerror=alert(1)> token=private123"
