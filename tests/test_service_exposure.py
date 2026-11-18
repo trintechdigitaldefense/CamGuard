@@ -7,7 +7,7 @@ from camguard.service_exposure import observe_service
 
 
 class FakeSocket:
-    def __init__(self, response=b"HTTP/1.1 200 OK\\r\\n"):
+    def __init__(self, response=b"HTTP/1.1 200 OK\r\n"):
         self.response = iter(response)
         self.sent = b""
     def settimeout(self, timeout): pass
@@ -22,7 +22,7 @@ class FakeSocket:
 
 class ServiceExposureTests(unittest.TestCase):
     def test_http_records_only_validated_status_code(self):
-        sock = FakeSocket(b"HTTP/1.1 200 OK SECRET_TOKEN=abc123\\r\\n")
+        sock = FakeSocket(b"HTTP/1.1 200 OK SECRET_TOKEN=abc123\r\n")
         with patch("camguard.service_exposure.socket.create_connection", return_value=sock):
             result = observe_service("192.168.1.10", 80)
         self.assertEqual(result["service_name"], "HTTP")
@@ -32,7 +32,7 @@ class ServiceExposureTests(unittest.TestCase):
         self.assertNotIn(b"Authorization:", sock.sent)
 
     def test_malformed_and_incomplete_http_lines_are_not_identified(self):
-        for response in (b"HTTP/9.9 200 OK\\r\\n", b"HTTP/1.1 20 OK\\r\\n", b"HTTP/1.1 200 OK", b"HTTP/1.1 200 OK" + b"x" * 600):
+        for response in (b"HTTP/9.9 200 OK\r\n", b"HTTP/1.1 20 OK\r\n", b"HTTP/1.1 200 OK", b"HTTP/1.1 200 OK" + b"x" * 600):
             with self.subTest(response=response[:30]):
                 sock = FakeSocket(response)
                 with patch("camguard.service_exposure.socket.create_connection", return_value=sock):
