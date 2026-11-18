@@ -44,6 +44,30 @@ class TechnicianInspectionTests(unittest.TestCase):
             record_check(self.inspection, "nvr_configuration", "config_backup", "needs_attention",
                          notes="password: Example123")
 
+    def test_secret_variants_rejected_in_notes_and_evidence_refs(self):
+        samples = ["api_key=hidden123", "access_token: hidden456",
+                   "Authorization: Bearer hidden789", "cookie=session-secret"]
+        for sample in samples:
+            with self.subTest(sample=sample):
+                with self.assertRaisesRegex(ValueError, "secret"):
+                    record_check(self.inspection, "remote_access", "remote_logging",
+                                 "needs_attention", notes=sample)
+                with self.assertRaisesRegex(ValueError, "secret"):
+                    record_check(self.inspection, "account_permissions", "unique_accounts",
+                                 "pass", evidence_refs=[sample])
+
+    def test_validator_rejects_tampered_question_and_oversized_refs(self):
+        record_check(self.inspection, "account_permissions", "unique_accounts",
+                     "pass", evidence_refs=["evidence://one"])
+        self.inspection["responses"][0]["question"] = "<script>altered</script>"
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            validate_inspection(self.inspection)
+
+        self.inspection["responses"][0]["question"] = dict(CHECKLISTS["account_permissions"]["checks"])["unique_accounts"]
+        self.inspection["responses"][0]["evidence_refs"] = ["evidence://x"] * 21
+        with self.assertRaisesRegex(ValueError, "at most 20"):
+            validate_inspection(self.inspection)
+
     def test_response_is_upserted(self):
         record_check(self.inspection, "account_permissions", "unique_accounts", "not_verified")
         record_check(self.inspection, "account_permissions", "unique_accounts", "pass",
