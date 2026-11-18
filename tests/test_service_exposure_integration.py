@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from camguard.pdf_report import write_pdf_report
 from camguard.reporting import write_reports
-from camguard.scanner import scan_network
+from camguard.scanner import _check_host, scan_network
 
 
 class ServiceExposureIntegrationTests(unittest.TestCase):
@@ -39,6 +39,32 @@ class ServiceExposureIntegrationTests(unittest.TestCase):
         self.assertEqual(result["service_observations"][1]["reachability"], "not_reachable")
         self.assertEqual(result["service_observations"][0]["schema_version"], "1.0")
         self.assertTrue(result["assessment_id"])
+
+
+    def test_scanner_reuses_single_tcp_connection_for_http_probe(self):
+        class ConnectedSocket:
+            def __init__(self):
+                self.response = iter(b"HTTP/1.1 204 No Content\r\n")
+                self.sent = b""
+                self.closed = False
+            def settimeout(self, timeout): pass
+            def connect_ex(self, address): return 0
+            def sendall(self, data): self.sent += data
+            def recv(self, size):
+                try: return bytes([next(self.response)])
+                except StopIteration: return b""
+            def close(self): self.closed = True
+        sock = ConnectedSocket()
+        with patch("camguard.scanner.socket.socket", return_value=sock) as create_socket, patch(
+            "camguard.service_exposure.socket.create_connection",
+            side_effect=AssertionError("protocol probe must reuse the scanner socket"),
+        ):
+            result = _check_host("192.168.1.10", {80: "HTTP management"}, 0.8)
+        create_socket.assert_called_once()
+        self.assertTrue(sock.closed)
+        self.assertEqual(len(result["open_ports"]), 1)
+        observation = result["open_ports"][0]["service_observation"]
+        self.assertEqual(observation["service_evidence"], "Received HTTP status code: 204.")
 
     def test_markdown_and_pdf_render_observation_evidence(self):
         result = {
