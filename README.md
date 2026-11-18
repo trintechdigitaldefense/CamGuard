@@ -174,7 +174,7 @@ camguard assess \
   --output-dir reports
 ```
 
-The same `--assessment-id` and repeatable `--inspection` options are available on `camguard scan` when attaching records to an authorized network scan report. Reports then include the attached technician observations and completion summary.
+The same `--assessment-id` and repeatable `--inspection` options are available on `camguard scan` when attaching records to an authorized network scan report. Reports then include the attached technician observations and completion summary. The assessment ID and device IP are checked against the assessment; the technician-supplied asset ID is retained as a reference and is not independently verified against inventory.
 
 Keep inspection JSON and evidence references in the client's approved storage; do not commit client records to the public repository. Evidence references must point to operator-managed records, not contain passwords, tokens, private keys, cookies or raw video. Technician responses are not independently verified by CamGuard.
 
@@ -309,8 +309,8 @@ The project targets Python 3.10+. Run tests with synthetic data; never use real 
 
 ## Roadmap
 
-- **0.6.0 development:** initial evidence-based service exposure observations are implemented on the [development pull request](https://github.com/trintechdigitaldefense/CamGuard/pull/10). See the [design and implementation notes](docs/roadmap/0.6.0-service-exposure-assessment.md). This work is included in the published 0.7.0 release.
-- **0.7.0 development:** technician-assisted inspection data model, six CCTV security checklists, evidence-reference handling and inspection report integration are included in this release. See [the 0.7.0 inspection specification](docs/roadmap/0.7.0-technician-assisted-inspection.md). Included in the published 0.7.0 release.
+- **0.6.0 service exposure:** merged into `main` through [PR #10](https://github.com/trintechdigitaldefense/CamGuard/pull/10), included in this release. See the [design and implementation notes](docs/roadmap/0.6.0-service-exposure-assessment.md).
+- **0.7.0 technician-assisted inspection:** merged through [PR #11](https://github.com/trintechdigitaldefense/CamGuard/pull/11), including six CCTV security checklists, evidence-reference handling and inspection report integration. See [the 0.7.0 inspection specification](docs/roadmap/0.7.0-technician-assisted-inspection.md).
 - Guided camera/NVR configuration-hardening checklist.
 - Finding lifecycle, remediation evidence and historical comparisons.
 - Optional client-approved monitoring and alerting.
