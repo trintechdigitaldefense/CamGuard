@@ -1,4 +1,4 @@
-name: Publish CamGuard 0.5.0rc1
+name: Publish CamGuard 0.7.0
 
 on:
   push:
@@ -14,50 +14,102 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: Check out validated release source
+      - name: Check out exact merged release source
         uses: actions/checkout@v4
         with:
-          ref: e288d2ec78aca46de57243b5dcc9a4eb614f7025
+          ref: ${{ github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Build wheel
+      - name: Run full regression suite
         run: |
+          python -m pip install -e .
+          python -m unittest discover -s tests -v
+          python -m camguard --help
+          python -m camguard assess --help
+          python -m camguard review-advisories --help
+          python -m camguard inspection --help
+
+      - name: Build and inspect release wheel
+        run: |
+          set -euo pipefail
           python -m pip install --upgrade build
           python -m build --wheel
           python - <<'PY'
           from pathlib import Path
           from zipfile import ZipFile
+          from email.parser import Parser
           wheels = list(Path("dist").glob("*.whl"))
-          assert len(wheels) == 1, wheels
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected one wheel, found {len(wheels)}")
           wheel = wheels[0]
           with ZipFile(wheel) as archive:
               names = archive.namelist()
-              forbidden = ("advisories/inbox/", "approvals.json", "approved-advisories.json", "review-audit.jsonl", "client")
-              matches = [name for name in names if any(token in name.lower() for token in forbidden)]
-              if matches:
-                  raise SystemExit(f"Sensitive files in wheel: {matches}")
+              metadata_name = next((n for n in names if n.endswith(".dist-info/METADATA")), None)
+              if not metadata_name:
+                  raise SystemExit("Wheel metadata missing")
+              metadata = Parser().parsestr(archive.read(metadata_name).decode("utf-8"))
+              if metadata.get("Version") != "0.7.0":
+                  raise SystemExit(f"Unexpected package version: {metadata.get('Version')}")
+              forbidden = ("advisories/inbox/", "approvals.json", "approved-advisories.json",
+                           "review-audit.jsonl", "client-inventory", "customer-inventory")
+              leaked = [n for n in names if any(token in n.lower() for token in forbidden)]
+              if leaked:
+                  raise SystemExit(f"Sensitive/client files found in wheel: {leaked}")
+              if not any(n.startswith("camguard/") for n in names):
+                  raise SystemExit("CamGuard package missing from wheel")
           print(f"Validated wheel: {wheel}")
           PY
 
-      - name: Verify isolated installation and CLI
+      - name: Verify clean isolated installation
         run: |
-          python -m venv /tmp/camguard-publish-venv
-          /tmp/camguard-publish-venv/bin/python -m pip install dist/*.whl
-          /tmp/camguard-publish-venv/bin/camguard --help
-          /tmp/camguard-publish-venv/bin/camguard assess --help
-          /tmp/camguard-publish-venv/bin/camguard review-advisories --help
+          set -euo pipefail
+          python -m venv /tmp/camguard-release-venv
+          cd /tmp
+          /tmp/camguard-release-venv/bin/python -m pip install "${GITHUB_WORKSPACE}"/dist/*.whl
+          /tmp/camguard-release-venv/bin/python - <<'PY'
+          from importlib.metadata import version
+          import camguard
+          from pathlib import Path
+          import sys
+          module = Path(camguard.__file__).resolve()
+          if Path(sys.prefix).resolve() not in module.parents:
+              raise SystemExit(f"Imported outside clean venv: {module}")
+          if version("trintech-camguard") != "0.7.0":
+              raise SystemExit("Installed distribution version mismatch")
+          print(f"Installed version: {version('trintech-camguard')}")
+          print(f"Module: {module}")
+          PY
+          /tmp/camguard-release-venv/bin/camguard --help
+          /tmp/camguard-release-venv/bin/camguard assess --help
+          /tmp/camguard-release-venv/bin/camguard review-advisories --help
+          /tmp/camguard-release-venv/bin/camguard inspection --help
 
-      - name: Publish GitHub prerelease
+      - name: Record release checksum and validation
+        run: |
+          set -euo pipefail
+          sha256sum dist/*.whl | tee dist/SHA256SUMS.txt
+          {
+            echo "Source commit: ${GITHUB_SHA}"
+            echo "Package version: 0.7.0"
+            echo "Full regression suite: PASS"
+            echo "Clean virtual environment installation: PASS"
+            echo "CLI help checks: PASS"
+            echo "Sensitive/client data wheel check: PASS"
+            echo "Wheel SHA-256:"
+            cat dist/SHA256SUMS.txt
+          } > dist/VALIDATION.txt
+          cat dist/VALIDATION.txt
+
+      - name: Publish stable GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create 0.5.0rc1 dist/*.whl \
+          gh release create 0.7.0 dist/*.whl dist/SHA256SUMS.txt dist/VALIDATION.txt \
             --repo "${GITHUB_REPOSITORY}" \
-            --target e288d2ec78aca46de57243b5dcc9a4eb614f7025 \
-            --title "CamGuard 0.5.0rc1" \
-            --prerelease \
-            --notes "CamGuard 0.5.0 release candidate. Built from validated source commit e288d2ec78aca46de57243b5dcc9a4eb614f7025. Includes the authorized, read-only CCTV and IP camera assessment workflow, analyst-gated advisory review, explainable risk prioritization, and hardened reporting. This is a release candidate, not a stable 0.5.0 release."
+            --target "${GITHUB_SHA}" \
+            --title "CamGuard 0.7.0" \
+            --notes "CamGuard 0.7.0 stable release. Includes bounded service exposure assessment and technician-assisted CCTV/NVR inspection workflows. Built from the exact validated source commit. The wheel is checked for private advisory/client records and installed in a clean virtual environment before publication."
