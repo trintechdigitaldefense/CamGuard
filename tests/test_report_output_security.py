@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from camguard import pdf_report
-from camguard.reporting import _safe_markdown, write_reports
+from camguard.reporting import _safe_markdown, redact_sensitive, write_reports
 
 
 class ReportOutputSecurityTests(unittest.TestCase):
@@ -16,6 +16,8 @@ class ReportOutputSecurityTests(unittest.TestCase):
         self.assertIn(r"\<script\>", safe)
         self.assertIn("token=[REDACTED]", safe)
         self.assertNotIn("abc123", safe)
+        self.assertEqual(redact_sensitive("password=hunter2 token=abc123 api_key=key456"),
+                         "password=[REDACTED] token=[REDACTED] api_key=[REDACTED]")
 
     def test_markdown_report_escapes_untrusted_observation_and_redacts(self):
         result = {
@@ -79,7 +81,10 @@ class ReportOutputSecurityTests(unittest.TestCase):
         self.assertNotIn("<b>Injected</b>", dynamic)
         self.assertIn("&lt;b&gt;Injected&lt;/b&gt;", dynamic)
         self.assertIn("&lt;img", dynamic)
-        self.assertIn("token=private123", dynamic)  # XML-safe; PDF does not promise secret scrubbing for arbitrary supplied fields.
+        self.assertIn("token=[REDACTED]", dynamic)
+        self.assertNotIn("private123", dynamic)
+        self.assertNotIn("api_key=secret123", dynamic)
+
 
 
 if __name__ == "__main__":
