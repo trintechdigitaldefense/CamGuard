@@ -48,7 +48,7 @@ def _read_status_line(sock: socket.socket) -> bytes:
         if not chunk:
             return b""
         if chunk == b"\n":
-            return bytes(data) if data.endswith(b"\r") else b""
+            return bytes(data[:-1]) if data.endswith(b"\r") else b""
         data.extend(chunk)
     return b""
 
