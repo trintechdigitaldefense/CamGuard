@@ -116,6 +116,68 @@ camguard assess \
 
 CamGuard validates analyst decisions against the current pending inbox and hash-chained audit log, then loads a temporary validated advisory export. Supplying only one or two of the three review inputs is rejected. Assessment itself makes no external API calls or network probes.
 
+
+### 4. Technician-assisted camera/NVR inspection (0.7.0 development)
+
+The technician inspection workflow is manual and records observations made under the client's approved procedures. It does not log in to devices, test passwords, retrieve configuration or video, or change device settings.
+
+Create a separate inspection record for each asset:
+
+```bash
+camguard inspection create \
+  --assessment-id "client-job-2026-014" \
+  --asset-id "camera-04" \
+  --device-ip "192.168.10.20" \
+  --inspector "technician-id" \
+  --output "inspections/camera-04.json"
+```
+
+Display the checklist IDs (six categories, 30 checks), or one category:
+
+```bash
+camguard inspection template
+camguard inspection template --category remote_access
+```
+
+Record a result using the exact category and check IDs from the template. Pass and Fail require at least one evidence reference. Not Applicable and Needs Attention require an explanatory note. Not Verified can be recorded without evidence:
+
+```bash
+camguard inspection record \
+  --input "inspections/camera-04.json" \
+  --category account_permissions \
+  --check unique_accounts \
+  --status pass \
+  --evidence-ref "client-evidence://job-2026-014/camera-04/accounts-review"
+```
+
+Repeat the `record` command for each check. By default it updates the input inspection file; use `--output another-file.json` to write a separate copy. A later response for the same category/check replaces the earlier response.
+
+Check progress at any time:
+
+```bash
+camguard inspection validate --input "inspections/camera-04.json"
+```
+
+Require all 30 checks to have a response before finalizing the field record:
+
+```bash
+camguard inspection validate --input "inspections/camera-04.json" --require-complete
+```
+
+Attach one or more inspection files to an offline inventory assessment. The assessment ID must match every inspection, and each inspection device IP must exist in the supplied inventory:
+
+```bash
+camguard assess \
+  --inventory inventory.json \
+  --assessment-id "client-job-2026-014" \
+  --inspection "inspections/camera-04.json" \
+  --output-dir reports
+```
+
+The same `--assessment-id` and repeatable `--inspection` options are available on `camguard scan` when attaching records to an authorized network scan report. Reports then include the attached technician observations and completion summary.
+
+Keep inspection JSON and evidence references in the client's approved storage; do not commit client records to the public repository. Evidence references must point to operator-managed records, not contain passwords, tokens, private keys, cookies or raw video. Technician responses are not independently verified by CamGuard.
+
 ## Vulnerability intelligence and analyst review
 
 CamGuard ingests from two public sources:
@@ -248,6 +310,7 @@ The project targets Python 3.10+. Run tests with synthetic data; never use real 
 ## Roadmap
 
 - **0.6.0 development:** initial evidence-based service exposure observations are implemented on the [development pull request](https://github.com/trintechdigitaldefense/CamGuard/pull/10). See the [design and implementation notes](docs/roadmap/0.6.0-service-exposure-assessment.md). This work is not included in the published 0.5.0rc1 release.
+- **0.7.0 development:** technician-assisted inspection data model, six CCTV security checklists, evidence-reference handling and inspection report integration are being developed on a separate feature branch. See [the 0.7.0 inspection specification](docs/roadmap/0.7.0-technician-assisted-inspection.md). Not part of the published 0.5.0rc1 release.
 - Guided camera/NVR configuration-hardening checklist.
 - Finding lifecycle, remediation evidence and historical comparisons.
 - Optional client-approved monitoring and alerting.

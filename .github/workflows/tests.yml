@@ -3,7 +3,7 @@ on:
   push:
     branches: [main, feature/risk-prioritization-hardening-v1]
   pull_request:
-    branches: [main, feature/risk-prioritization-v1]
+    branches: [main, feature/risk-prioritization-v1, feature/service-exposure-assessment-0.6.0]
 permissions:
   contents: read
 jobs:

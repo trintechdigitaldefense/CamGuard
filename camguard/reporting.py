@@ -103,6 +103,30 @@ def write_reports(result: dict[str, Any], output_dir: str) -> tuple[Path, Path]:
             f"- Recommended action: {_safe_markdown(obs.get('recommended_action', 'Verify with the administrator.'))}",
             *[f"- Limitation: {_safe_markdown(item)}" for item in obs.get("limitations", [])], "",
         ]
+    lines += ["", "## Technician-assisted inspections"]
+    inspections = result.get("inspections", [])
+    if not inspections:
+        lines.append("No technician-assisted inspection records were attached.")
+    for inspection in inspections:
+        from .inspection import inspection_summary, validate_inspection
+        validate_inspection(inspection, require_complete=False)
+        summary = inspection_summary(inspection)
+        lines += [
+            f"### {_safe_markdown(inspection.get('device_ip', 'Unknown device'))} — {_safe_markdown(inspection.get('asset_id', 'Unlinked asset'))}",
+            f"- Inspector: {_safe_markdown(inspection.get('inspector', 'Not recorded'))}",
+            f"- Inspected at: {_safe_markdown(inspection.get('inspected_at', 'Not recorded'))}",
+            f"- Checklist completion: {summary['completed_checks']}/{summary['total_checks']}",
+            f"- Pass: {summary['pass']}; Fail: {summary['fail']}; Needs attention: {summary['needs_attention']}; Not verified: {summary['not_verified']}; Not applicable: {summary['not_applicable']}",
+        ]
+        for response in inspection.get("responses", []):
+            lines += [
+                f"- **{_safe_markdown(response['category'])} / {_safe_markdown(response['check_id'])} — {_safe_markdown(response['status'].replace('_', ' ').title())}**",
+                f"  - {_safe_markdown(response['question'])}",
+                *([f"  - Notes: {_safe_markdown(response['notes'])}"] if response.get("notes") else []),
+                *([f"  - Evidence references: {_safe_markdown(', '.join(response['evidence_refs']))}"] if response.get("evidence_refs") else []),
+            ]
+        lines += [f"- Limitation: {_safe_markdown(item)}" for item in inspection.get("limitations", [])]
+        lines.append("")
     lines += ["", "## Findings"]
     if not result["findings"]:
         lines.append("No findings were generated from the supplied evidence.")
