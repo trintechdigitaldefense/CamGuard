@@ -71,7 +71,8 @@ class ServiceExposureTests(unittest.TestCase):
         with patch("camguard.service_exposure.socket.create_connection", return_value=raw), patch("camguard.service_exposure.ssl.SSLContext", return_value=Context()):
             result = observe_service("192.168.1.10", 443)
         self.assertEqual(result["encryption_status"], "unknown")
-        self.assertIn("timed out", result["service_evidence"])
+        self.assertEqual(result["reachability"], "error")
+        self.assertIn("TCP connection timed out", result["service_evidence"])
 
     def test_tls_refused_connection_is_error_not_tls(self):
         with patch("camguard.service_exposure.socket.create_connection", side_effect=ConnectionRefusedError):
@@ -102,6 +103,7 @@ class ServiceExposureTests(unittest.TestCase):
             result = observe_service("192.168.1.10", 8443)
         self.assertIn("timed out", result["service_evidence"])
         self.assertEqual(result["encryption_status"], "unknown")
+        self.assertEqual(result["reachability"], "reachable")
 
 
 if __name__ == "__main__":
