@@ -54,6 +54,8 @@ class ServiceExposureIntegrationTests(unittest.TestCase):
                 try: return bytes([next(self.response)])
                 except StopIteration: return b""
             def close(self): self.closed = True
+            def __enter__(self): return self
+            def __exit__(self, *args): self.close()
         sock = ConnectedSocket()
         with patch("camguard.scanner.socket.socket", return_value=sock) as create_socket, patch(
             "camguard.service_exposure.socket.create_connection",
