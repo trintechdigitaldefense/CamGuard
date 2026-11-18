@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from xml.sax.saxutils import escape
 from typing import Any
+from .reporting import redact_sensitive
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -24,16 +25,16 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
     styles.add(ParagraphStyle(name="Section", parent=styles["Heading2"], textColor=NAVY, fontSize=14, leading=18, spaceBefore=12, spaceAfter=7))
     styles.add(ParagraphStyle(name="Small", parent=styles["BodyText"], fontSize=8, leading=11))
     styles.add(ParagraphStyle(name="Tiny", parent=styles["BodyText"], fontSize=7, leading=9, textColor=colors.HexColor("#526273")))
-    safe = lambda value: escape(str(value))
+    safe = lambda value: escape(redact_sensitive(value))
     story = [Paragraph("TRINTECH DIGITAL DEFENSE", styles["BrandSub"]), Paragraph("CamGuard Security Assessment", styles["BrandTitle"]), Paragraph("DEFEND. DETECT. DOMINATE.", styles["BrandSub"]), Paragraph("Assessment overview", styles["Section"])]
     summary = [
-        ["Assessment date (UTC)", result.get("generated_at", "Not recorded")],
-        ["CamGuard version", result.get("version", "Unknown")],
-        ["Authorized scope", result.get("scope", {}).get("cidr", "Inventory-only assessment")],
+        ["Assessment date (UTC)", safe(result.get("generated_at", "Not recorded"))],
+        ["CamGuard version", safe(result.get("version", "Unknown"))],
+        ["Authorized scope", safe(result.get("scope", {}).get("cidr", "Inventory-only assessment"))],
         ["Responsive assets", str(len(result.get("assets", [])))],
         ["Findings", str(len(result.get("findings", [])))],
         ["Service observations", str(len(result.get("service_observations", [])))],
-        ["Assessment method", result.get("scan_type", "Inventory and advisory correlation")],
+        ["Assessment method", safe(result.get("scan_type", "Inventory and advisory correlation"))],
     ]
     table = Table(summary, colWidths=[48*mm, 118*mm])
     table.setStyle(TableStyle([("BACKGROUND", (0, 0), (0, -1), PALE), ("TEXTCOLOR", (0, 0), (0, -1), NAVY), ("FONTNAME", (0, 0), (-1, -1), "Helvetica"), ("FONTSIZE", (0, 0), (-1, -1), 8), ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD7E1")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
@@ -42,7 +43,7 @@ def write_pdf_report(result: dict[str, Any], output_path: str | Path) -> Path:
     for asset in result.get("assets", []):
         ident = asset.get("identity", {})
         maker = " ".join(x for x in (ident.get("vendor"), ident.get("model")) if x) or "Not verified"
-        asset_rows.append([asset.get("ip", ""), maker, ident.get("firmware") or "Unknown", f"{asset.get('risk_score', 0)} / 100"])
+        asset_rows.append([safe(asset.get("ip", "")), safe(maker), safe(ident.get("firmware") or "Unknown"), safe(f"{asset.get('risk_score', 0)} / 100")])
     if len(asset_rows) == 1:
         asset_rows.append(["No assets", "No inventory records", "—", "—"])
     at = Table(asset_rows, colWidths=[32*mm, 60*mm, 42*mm, 32*mm], repeatRows=1)
