@@ -14,12 +14,19 @@ _SENSITIVE = re.compile(
 _MARKDOWN_SPECIAL = set("\\`*_{}[]()#+!|><")
 
 
+def redact_sensitive(value: Any) -> str:
+    """Redact common secret-like key/value values before report rendering."""
+    text = str(value)
+    return _SENSITIVE.sub(
+        lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]",
+        text,
+    )
+
+
 def _safe_markdown(value: Any) -> str:
     """Redact common key/value secrets and escape untrusted Markdown text."""
-    text = str(value)
-    text = _SENSITIVE.sub(lambda m: f"{m.group(1)}{m.group(2)}CAMGUARDREDACTEDTOKEN", text)
-    text = text.replace("\r", " ").replace("\n", " ")
-    return "".join(("\\" + char) if char in _MARKDOWN_SPECIAL else char for char in text).replace("CAMGUARDREDACTEDTOKEN", "[REDACTED]")
+    text = redact_sensitive(value).replace("\r", " ").replace("\n", " ")
+    return "".join(("\\" + char) if char in _MARKDOWN_SPECIAL else char for char in text)
 
 
 def write_reports(result: dict[str, Any], output_dir: str) -> tuple[Path, Path]:
