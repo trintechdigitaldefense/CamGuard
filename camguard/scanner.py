@@ -60,7 +60,7 @@ def _check_host(host: str, ports: dict[int, str], timeout: float) -> dict[str, A
         try:
             status = sock.connect_ex((host, port))
             if status == 0:
-                observation = observe_service(host, port, timeout)
+                observation = observe_service(host, port, timeout, connection=sock)
                 opened.append({
                     "port": port,
                     "service": service_hint,
