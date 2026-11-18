@@ -11,7 +11,7 @@ _SENSITIVE = re.compile(
     r"(?i)\b(password|passwd|pwd|token|access[_-]?token|refresh[_-]?token|"
     r"api[_-]?key|secret|authorization)\b(\s*[:=]\s*)([^\s,;]+)"
 )
-_MARKDOWN_SPECIAL = set("\\\`*_{}[]()#+!|><")
+_MARKDOWN_SPECIAL = set("\\`*_{}[]()#+!|><")
 
 
 def _safe_markdown(value: Any) -> str:
