@@ -77,8 +77,7 @@ class ReportOutputSecurityTests(unittest.TestCase):
             seen.extend(str(cell) for row in data for cell in row)
             return real_table(data, *args, **kwargs)
         with tempfile.TemporaryDirectory() as tmp:
-            with patch("camguard.pdf_report.Paragraph", side_effect=capture), \\
-                 patch("camguard.pdf_report.Table", side_effect=capture_table):
+            with patch("camguard.pdf_report.Paragraph", side_effect=capture), patch("camguard.pdf_report.Table", side_effect=capture_table):
                 output = pdf_report.write_pdf_report(result, Path(tmp) / "report.pdf")
             self.assertTrue(output.exists())
             self.assertGreater(output.stat().st_size, 0)
