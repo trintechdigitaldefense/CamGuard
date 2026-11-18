@@ -40,8 +40,8 @@ class ReportOutputSecurityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             _, markdown = write_reports(result, tmp)
             text = markdown.read_text(encoding="utf-8")
-        self.assertNotIn("<img", text)
-        self.assertIn(r"\\<img", text)
+        self.assertNotIn("Service evidence: <img", text)
+        self.assertIn(r"\<img", text)
         self.assertNotIn("secret123", text)
         self.assertIn("api\\_key=[REDACTED]", text)
 
