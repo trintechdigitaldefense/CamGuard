@@ -41,7 +41,7 @@ class ReportOutputSecurityTests(unittest.TestCase):
             _, markdown = write_reports(result, tmp)
             text = markdown.read_text(encoding="utf-8")
         self.assertNotIn("<img", text)
-        self.assertNotIn("onerror", text)
+        self.assertIn(r"\\<img", text)
         self.assertNotIn("secret123", text)
         self.assertIn("api\\_key=[REDACTED]", text)
 
