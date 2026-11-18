@@ -53,17 +53,18 @@ def _read_status_line(sock: socket.socket) -> bytes:
     return b""
 
 
-def observe_service(ip: str, port: int, timeout: float = 0.8) -> dict[str, Any]:
+def observe_service(ip: str, port: int, timeout: float = 0.8, connection: socket.socket | None = None) -> dict[str, Any]:
     """Identify conservative HTTP/TLS protocol evidence; never authenticate or retain secrets."""
     result = _base(ip, port)
     if port not in HTTP_PORTS | TLS_PORTS:
         return result
-    raw = None
-    connected = False
+    raw = connection
+    connected = connection is not None
     try:
-        raw = socket.create_connection((ip, port), timeout=timeout)
-        connected = True
+        if raw is None:
+            raw = socket.create_connection((ip, port), timeout=timeout)
         raw.settimeout(timeout)
+        connected = True
         if port in HTTP_PORTS:
             with raw:
                 raw.sendall(f"HEAD / HTTP/1.0\r\nHost: {ip}\r\nConnection: close\r\n\r\n".encode("ascii"))
