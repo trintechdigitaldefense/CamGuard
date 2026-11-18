@@ -26,7 +26,9 @@ def redact_sensitive(value: Any) -> str:
 def _safe_markdown(value: Any) -> str:
     """Redact common key/value secrets and escape untrusted Markdown text."""
     text = redact_sensitive(value).replace("\r", " ").replace("\n", " ")
-    return "".join(("\\" + char) if char in _MARKDOWN_SPECIAL else char for char in text)
+    text = text.replace("[REDACTED]", "CAMGUARDREDACTEDTOKEN")
+    escaped = "".join(("\\" + char) if char in _MARKDOWN_SPECIAL else char for char in text)
+    return escaped.replace("CAMGUARDREDACTEDTOKEN", "[REDACTED]")
 
 
 def write_reports(result: dict[str, Any], output_dir: str) -> tuple[Path, Path]:
